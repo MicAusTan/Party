@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Party Game</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head><body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div id="banner"></div>
+<div id="board" class="box" hidden></div>
+<div id="menu" class="box">
+  <h1>Party Game</h1>
+  <input id="name" placeholder="Your name" maxlength="12">
+  <button id="host">Host game</button>
+  <div class="row"><input id="code" placeholder="Room code" maxlength="5"><button id="join">Join</button></div>
+</div>
+<div id="panel" class="box" hidden>
+  <div>Room: <b id="room" title="Click to copy"></b></div>
+  <div id="players"></div>
+  <div id="look"><div id="swatches"></div><select id="hat"></select></div>
+  <div id="games"></div>
+  <div id="cfg"></div>
+  <button id="mute"></button>
+  <small>Move: WASD / arrows<br>Click room code to copy</small>
+</div>
+<script type="module" src="js/main.js"></script>
+</body></html>
