@@ -256,6 +256,14 @@ export class Board {
     setTimeout(() => { if (this.active) this.o.playMg(); }, 2000);
   }
   reward(i) { return this.s?.mega ? [20, 12, 6, 2][i] ?? 0 : REWARD[i] ?? 0; }
+  addPlayer(id) {   // late join (host only): slots in at the end of the turn order with the average coin count
+    if (!this.active || !this.o.net.isHost) return; const s = this.s;
+    if (s.phase === 'end') return this.o.net.sendTo(id, 'board', s);
+    if (s.order.includes(id)) return;
+    const cs = s.order.map(k => s.coins[k]), avg = cs.length ? Math.round(cs.reduce((a, c) => a + c, 0) / cs.length) : 10;
+    s.order.push(id); s.pos[id] = 0; s.coins[id] = Math.max(10, avg); s.stars[id] = 0; s.items[id] = []; s.next[id] = null;
+    s.log = this.name(id) + ' joined the game!'; this.push();
+  }
   onLeave(id) {
     if (!this.active || !this.o.net.isHost) return;
     const s = this.s, i = s.order.indexOf(id); if (i < 0) return;

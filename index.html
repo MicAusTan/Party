@@ -10,22 +10,54 @@
 <div id="hud"></div>
 <div id="banner"></div>
 <div id="board" class="box" hidden></div>
+<div id="party" class="box" hidden></div>
 <div id="menu" class="box">
   <h1>Party Game</h1>
   <input id="name" placeholder="Your name" maxlength="12">
+  <div id="mlook" class="look" data-look></div>
   <button id="host">Host game</button>
-  <button id="solo">🧪 Practice (solo, offline)</button>
   <div class="row"><input id="code" placeholder="Room code" maxlength="5"><button id="join">Join</button></div>
+  <button id="solo" class="ghost">🧪 Practice (solo, offline)</button>
 </div>
 <div id="panel" class="box" hidden>
-  <div>Room: <b id="room" title="Click to copy"></b></div>
-  <div id="players"></div>
-  <div id="look"><div id="swatches"></div><select id="hat"></select></div>
-  <div id="games"></div>
-  <div id="cfg"></div>
-  <div id="practice" hidden><small>Practice mode</small><div class="row"><button data-p="add">+ Dummy</button><button data-p="rem">- Dummy</button></div><button data-p="exit">Exit practice</button></div>
-  <button id="mute"></button>
-  <small>Move: WASD / arrows<br>Click room code to copy</small>
+  <div class="top"><span>Room: <b id="room" title="Click to copy"></b></span><button id="fold" class="ghost" title="Collapse / expand">–</button></div>
+  <div id="body">
+    <div id="players"></div>
+    <button id="lookBtn" class="ghost">🎨 Customize</button>
+    <div id="look" class="look" data-look></div>
+    <div id="waitMsg"><small>Waiting for the host to start…</small></div>
+    <div id="hostCtl">
+      <button id="start">▶ Start game</button>
+      <small id="startHint"></small>
+      <button id="settingsBtn" class="ghost">⚙ Game settings</button>
+      <button id="stopMg" class="ghost">⏹ Skip minigame</button>
+      <button id="endGame" class="ghost">⏹ End game</button>
+    </div>
+    <div id="practice" hidden>
+      <small>Practice mode</small>
+      <div class="row"><button data-p="add">+ Dummy</button><button data-p="rem">- Dummy</button></div>
+      <div id="testRow"><select id="testSel"></select><button id="testGo">Test minigame</button></div>
+      <button data-p="exit" class="ghost">Exit practice</button>
+    </div>
+    <button id="mute" class="ghost"></button>
+    <small>Move: WASD / arrows</small>
+  </div>
 </div>
+<div id="settings" hidden><div class="sheet box">
+  <h2>Game settings</h2>
+  <div class="srow">Mode <select id="modeSel"><option value="board">🎲 Board game</option><option value="party">🎉 Minigame party</option></select></div>
+  <div id="boardOpts">
+    <div class="srow">Board <select id="boardSel"></select></div>
+    <div class="srow">Rounds <select id="rounds"></select></div>
+  </div>
+  <div id="partyOpts">
+    <div class="srow">Minigames to play <select id="partyN"><option value="5">5</option><option value="10">10</option><option value="20">20</option><option value="all">All in pool (each once)</option></select></div>
+    <label id="repeatRow"><input type="checkbox" id="repeats"> Allow the same minigame more than once</label>
+    <small>Party mode: random minigames back to back, points add up, highest total wins.</small>
+  </div>
+  <div class="srow"><b>Minigame pool</b><span><button id="poolAll" class="ghost">All</button> <button id="poolNone" class="ghost">None</button></span></div>
+  <div id="pool"></div>
+  <button id="settingsClose">Done</button>
+</div></div>
 <script type="module" src="js/main.js"></script>
 </body></html>
