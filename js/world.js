@@ -6,12 +6,12 @@ export class World {
     this.scene = new THREE.Scene(); this.scene.background = new THREE.Color(0x87ceeb);
     this.cam = new THREE.PerspectiveCamera(50, 1, .1,200);
     this.cam.position.set(0, 18, 14); this.cam.lookAt(0, 0, 0);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x556677, 1.2));
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0x556677, 1.2); this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(5, 12, 6); this.scene.add(sun);
     const floor = new THREE.Mesh(new THREE.CylinderGeometry(13, 13, 1, 12),
       new THREE.MeshStandardMaterial({ color: 0x7ac36a, flatShading: true }));
     floor.position.y = -.5; this.scene.add(floor); this.deco = [floor];
-    this.m = new Map(); this.parts = []; this.t = 0;
+    this.m = new Map(); this.parts = []; this.t = 0; this.anim = []; this.dark = 0; this.skyT = null; this.hemiT = 1.2; this.decoOn = true;
     const rs = () => { this.r.setSize(innerWidth, innerHeight, false); this.cam.aspect = innerWidth / innerHeight; this.cam.updateProjectionMatrix(); };
     addEventListener('resize', rs); rs();
   }
@@ -53,10 +53,18 @@ export class World {
       this.parts.push({ m, vx: (Math.random() - .5) * 8, vy: Math.random() * 7 + 2, vz: (Math.random() - .5) * 8, life: .8 });
     }
   }
-  showDeco(v) { this.deco.forEach(o => o.visible = v); }
+  showDeco(v) { this.decoOn = v; this.deco.forEach(o => o.visible = v); }
+  setSky(p) {   // p in [0,1] = progress through the game (dawn -> day -> dusk -> night); null = plain day
+    if (p == null) { this.skyT = null; this.dark = 0; this.hemiT = 1.2; this.scene.background.set(0x87ceeb); return; }
+    const st = [0xffc58a, 0x87ceeb, 0x87ceeb, 0xe58a6e, 0x1b2440], f = Math.min(.999, Math.max(0, p)) * (st.length - 1), i = f | 0;
+    this.skyT = new THREE.Color(st[i]).lerp(new THREE.Color(st[i + 1]), f - i); this.dark = p; this.hemiT = 1.2 - .75 * Math.max(0, (p - .6) / .4);
+  }
   set(id, x, z) { const e = this.m.get(id); if (e) { e.tx = x; e.tz = z; } }
   frame(dt) {
     this.t += dt;
+    for (const f of this.anim) f(dt, this.t);
+    if (this.skyT) this.scene.background.lerp(this.skyT, Math.min(1, dt * .8));
+    this.hemi.intensity += (this.hemiT - this.hemi.intensity) * Math.min(1, dt * .8);
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const q = this.parts[i]; q.vy -= 20 * dt; q.m.position.x += q.vx * dt; q.m.position.y += q.vy * dt; q.m.position.z += q.vz * dt;
       q.life -= dt; q.m.material.opacity = Math.max(0, q.life / .8);

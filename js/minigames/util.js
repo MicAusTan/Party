@@ -10,7 +10,7 @@ export function scoreboard(ctx, { timeout = 30, lower = true } = {}) {
     if (done) return; done = true;
     ctx.finish([...ids].sort((a, b) => lower ? val(a) - val(b) : val(b) - val(a)));
   };
-  const check = () => { if (ids.every(id => id in res)) finish(); };
+  const check = () => { if (ids.every(id => id in res || ctx.players[id]?.bot)) finish(); };
   return {
     report(v) { if (ctx.isHost) { res[ctx.me] = v; check(); } else ctx.send({ r: v }); },
     onMessage(m, from) { if (ctx.isHost && m.r != null && ids.includes(from) && !(from in res)) { res[from] = +m.r || 0; check(); } },

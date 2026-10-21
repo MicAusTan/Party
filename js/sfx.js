@@ -27,6 +27,7 @@ const S = {
   hit: () => tone(160, .12, 'sawtooth', .08, 0, .5),
   fall: () => tone(500, .5, 'sine', .07, 0, .15),
   dash: () => tone(200, .15, 'sawtooth', .06, 0, 3),
+  erupt: () => { tone(90, .7, 'sawtooth', .1, 0, .5); tone(140, .5, 'square', .05, .1, .4); },
 };
 export const sfx = n => S[n]?.();
 export const isMuted = () => muted;

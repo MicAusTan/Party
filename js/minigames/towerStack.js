@@ -26,6 +26,7 @@ export default {
     return {
       update(dt) {
         time += dt;
+        if (host && !over && ctx.players[whose()]?.bot && (ctx._bt = (ctx._bt || 0) + dt) > 1.3) { ctx._bt = 0; drop(); }
         if (host && !over) { ph += dt * (1.5 + .1 * (layers.length - 1)); pos = Math.sin(ph) * R; if ((acc += dt) > .05) { acc = 0; ctx.send({ L: layers, t: turn, x: +pos.toFixed(1) }); } if (time > 80) end(); }
         const sc = Math.max(0, layers.length - 10) * LH; c.clearRect(0, 0, 360, 320);
         layers.forEach((l, i) => { c.fillStyle = `hsl(${i * 28 % 360} 70% 55%)`; c.fillRect(180 + l.x - l.w / 2, 300 - (i + 1) * LH + sc, l.w, LH - 2); });

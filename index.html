@@ -14,6 +14,7 @@
   <h1>Party Game</h1>
   <input id="name" placeholder="Your name" maxlength="12">
   <button id="host">Host game</button>
+  <button id="solo">🧪 Practice (solo, offline)</button>
   <div class="row"><input id="code" placeholder="Room code" maxlength="5"><button id="join">Join</button></div>
 </div>
 <div id="panel" class="box" hidden>
@@ -22,6 +23,7 @@
   <div id="look"><div id="swatches"></div><select id="hat"></select></div>
   <div id="games"></div>
   <div id="cfg"></div>
+  <div id="practice" hidden><small>Practice mode</small><div class="row"><button data-p="add">+ Dummy</button><button data-p="rem">- Dummy</button></div><button data-p="exit">Exit practice</button></div>
   <button id="mute"></button>
   <small>Move: WASD / arrows<br>Click room code to copy</small>
 </div>

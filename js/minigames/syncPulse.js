@@ -19,6 +19,7 @@ export default {
     return {
       update(dt) {
         time += dt;
+        if (host && !over) for (let k = 0; k < N; k++) if (T0 + k * P < time) ids.forEach(id => ctx.players[id].bot && hits[k].add(id));
         if (host && !over) {
           ok = evalOk(); if ((acc += dt) > .3) { acc = 0; ctx.send({ ok }); }
           if (time > T0 + N * P + .8) { over = true; const n = [...ok].filter(x => x === '1').length; const rk = n >= 20 ? 0 : n >= 14 ? 1 : n >= 8 ? 2 : 3; ctx.send({ ok }); ctx.finish([...ids], ids.map(() => rk)); }

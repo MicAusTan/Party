@@ -1,6 +1,7 @@
 import { Net } from './net.js';
 import { World } from './world.js';
 import { Board } from './board.js';
+import { BOARDS } from './boards.js';
 import { sfx, toggleMute, isMuted } from './sfx.js';
 import { MINIGAMES } from './minigames/registry.js';
 
@@ -11,7 +12,7 @@ const HATS = ['none', 'cone', 'top', 'ears', 'halo'];
 const net = new Net(), world = new World($('c'));
 const board = new Board({ net, world, esc, players: () => players, playMg: startRandomMg, onChange: () => lock(), fx: (t, a) => fx(t, a) });
 let players = {}, me = null, mg = null, look = { color: COLORS[0], hat: 'none' };
-const sim = {}, keys = {}; let cfg = { rounds: 8, off: [] };   // sim: host-only free-roam positions
+const sim = {}, keys = {}; let cfg = { rounds: 8, off: [], board: 'grove' };   // sim: host-only free-roam positions
 
 try { cfg = { ...cfg, ...JSON.parse(localStorage.getItem('pg-cfg') || '{}') }; } catch {}
 try { look = { ...look, ...JSON.parse(localStorage.getItem('pg-look') || '{}') }; $('name').value = localStorage.getItem('pg-name') || ''; } catch {}
@@ -27,7 +28,7 @@ $('code').onkeydown = e => { if (e.key === 'Enter') $('join').click(); };
 $('room').onclick = () => navigator.clipboard?.writeText($('room').textContent).then(() => toast('Room code copied!'));
 const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 function lock() {
-  document.querySelectorAll('#games button').forEach(b => b.disabled = b.dataset.k === 'quit' ? !board.active || !!mg : !!mg || board.active);
+  document.querySelectorAll('#games button').forEach(b => { const k = b.dataset.k; b.disabled = k === 'quit' ? !board.active || !!mg : k === 'abort' ? !mg : !!mg || board.active; });
 }
 
 function readInput() {
@@ -60,20 +61,22 @@ $('hat').innerHTML = HATS.map(h => `<option value="${h}">${h === 'none' ? 'No ha
 $('hat').onchange = e => setLook({ hat: e.target.value });
 
 function enter(code) {
-  $('menu').hidden = true; $('panel').hidden = false; $('room').textContent = code;
+  $('menu').hidden = true; $('panel').hidden = false; $('practice').hidden = !practice; $('room').textContent = code;
   if (net.isHost) {
     $('games').innerHTML = '<button data-k="board">🎲 Board game</button>' +
       Object.entries(MINIGAMES).map(([k, g]) => `<button data-k="${k}">${esc(g.name)}</button>`).join('') +
-      '<button data-k="random">🎲 Random minigame</button><button data-k="quit">Quit board</button>';
+      '<button data-k="random">🎲 Random minigame</button><button data-k="quit">Quit board</button><button data-k="abort">⏹ Stop minigame</button>';
     $('games').onclick = e => {
       const k = e.target.dataset.k; if (!k || e.target.disabled) return;
-      if (k === 'board') board.start(cfg.rounds);
+      if (k === 'board') board.start(cfg.rounds, cfg.board === 'random' ? Object.keys(BOARDS)[Math.random() * Object.keys(BOARDS).length | 0] : cfg.board);
       else if (k === 'quit') board.quit();
+      else if (k === 'abort') mg?.finish?.([]);
       else if (!mg) startRandomMg(k === 'random' ? null : k);
     };
-    $('cfg').innerHTML = `<details><summary>⚙ Settings</summary>Board rounds <select id="rounds">${[4, 8, 12].map(n => `<option${n === cfg.rounds ? ' selected' : ''}>${n}</option>`).join('')}</select><div>Random pool:<br>${Object.entries(MINIGAMES).map(([k, g]) => `<label><input type="checkbox" data-mg="${k}"${cfg.off.includes(k) ? '' : ' checked'}> ${esc(g.name)}</label>`).join('<br>')}</div></details>`;
+    $('cfg').innerHTML = `<details><summary>⚙ Settings</summary>Board <select id="boardSel">${Object.entries(BOARDS).map(([k, b]) => `<option value="${k}"${k === cfg.board ? ' selected' : ''}>${b.name}</option>`).join('')}<option value="random"${cfg.board === 'random' ? ' selected' : ''}>🎲 Random board</option></select><br>Rounds <select id="rounds">${[4, 8, 12].map(n => `<option${n === cfg.rounds ? ' selected' : ''}>${n}</option>`).join('')}</select><div>Random pool:<br>${Object.entries(MINIGAMES).map(([k, g]) => `<label><input type="checkbox" data-mg="${k}"${cfg.off.includes(k) ? '' : ' checked'}> ${esc(g.name)}</label>`).join('<br>')}</div></details>`;
     $('cfg').onchange = e => {
-      if (e.target.id === 'rounds') cfg.rounds = +e.target.value;
+      if (e.target.id === 'boardSel') cfg.board = e.target.value;
+      else if (e.target.id === 'rounds') cfg.rounds = +e.target.value;
       else if (e.target.dataset.mg) { const k = e.target.dataset.mg; cfg.off = cfg.off.filter(x => x !== k); if (!e.target.checked) cfg.off.push(k); }
       try { localStorage.setItem('pg-cfg', JSON.stringify(cfg)); } catch {}
     };
@@ -81,6 +84,23 @@ function enter(code) {
   }
   setPlayers(players);
 }
+
+let practice = false, botN = 0;
+$('solo').onclick = () => {
+  practice = true; net.isHost = true; net.id = 'host'; me = 'host'; sim.host = { x: 0, z: 0, ix: 0, iz: 0 };
+  players = {}; players.host = { id: 'host', name: myName(), color: pickColor(look.color, 'host'), hat: pickHat(look.hat) };
+  enter('PRACTICE');
+};
+function addDummy() {
+  const n = Object.keys(players).length; if (n >= 8) return; const id = 'bot' + (++botN);
+  players[id] = { id, name: 'Dummy ' + botN, color: pickColor(COLORS[n % 8], id), hat: 'none', bot: true };
+  sim[id] = { x: (n % 5) * 2 - 4, z: 2, ix: 0, iz: 0 }; pushLobby();
+}
+function removeDummy() {
+  const id = Object.keys(players).reverse().find(k => players[k].bot); if (!id) return;
+  delete players[id]; delete sim[id]; board.onLeave(id); pushLobby();
+}
+$('practice').onclick = e => { const p = e.target.dataset.p; if (p === 'add') addDummy(); else if (p === 'rem') removeDummy(); else if (p === 'exit') location.reload(); };
 
 $('host').onclick = async () => {
   try {
@@ -130,6 +150,7 @@ function startMg(key, seed) {
       net.broadcast('mg:end', { placements: pl, ranks: rk }); net.broadcast('lobby', players); endMg(pl, rk); setPlayers(players);
     },
   };
+  mg.finish = ctx.finish;
   let n = 3;
   const tick = () => {
     if (!mg || mg.key !== key || mg.inst) return;
@@ -143,7 +164,7 @@ function endMg(pl, rk = pl.map((_, i) => i)) {
   sfx(rk[pl.indexOf(me)] === 0 ? 'win' : 'click');
   mg?.inst?.cleanup(); mg = null; lock();
   const pts = i => board.active ? `🪙${board.reward(rk[i])}${board.s?.mega && rk[i] === 0 ? ' +⭐' : ''}` : `+${pl.length - rk[i]}`;
-  $('hud').innerHTML = `<div class="mg"><h2>Results</h2>${pl.map((id, i) => `<div>${rk[i] + 1}. ${esc(players[id]?.name ?? '?')} <b>${pts(i)}</b></div>`).join('')}</div>`;
+  $('hud').innerHTML = `<div class="mg"><h2>${pl.length ? 'Results' : 'Stopped'}</h2>${pl.map((id, i) => `<div>${rk[i] + 1}. ${esc(players[id]?.name ?? '?')} <b>${pts(i)}</b></div>`).join('')}</div>`;
   setTimeout(() => { if (!mg) $('hud').innerHTML = ''; }, 4000);
 }
 net.on('mg:start', d => { if (!net.isHost && MINIGAMES[d.key]) startMg(d.key, d.seed); });
