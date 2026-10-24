@@ -1,18 +1,29 @@
 import { sfx } from '../sfx.js';
 import * as THREE from 'three';
+import { stage } from './stage.js';
+import { driveBots } from './arena.js';
+import { topDown, starfield } from './kit.js';
 // Real-time test: host simulates everyone, clients send input and render snapshots.
 // Shrinking platform; last one standing wins. WASD to move, SPACE to dash.
 const TAU = Math.PI * 2;
+// Set: a metal platform floating in deep space, edged with a glowing ring that shrinks with it. Stars, a ringed planet and drifting asteroids
+// surround it; anyone shoved off tumbles into the void.
 export default {
-  name: 'Shove Off', desc: 'Knock everyone off the shrinking platform! WASD to move, SPACE to dash.',
+  emotes: false, name: 'Shove Off', desc: 'Knock everyone off the shrinking platform! WASD to move, SPACE to dash.',
   create(ctx) {
     const W = ctx.world, ids = Object.keys(ctx.players), host = ctx.isHost;
     const st = {}, out = [], held = {}, fall = {}, was = {};
     let time = 0, R = 8, acc = 1, over = false, lastIn = '', dashCd = 0, snap = {};
     ids.forEach((id, k) => { const a = k / ids.length * TAU; st[id] = { x: Math.sin(a) * 4, z: Math.cos(a) * 4, vx: 0, vz: 0, ix: 0, iz: 0, fx: 0, fz: 1, cd: 0, dash: false, alive: true }; });
-    W.showDeco(false);
-    const plat = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, .4, 20), new THREE.MeshStandardMaterial({ color: 0xffa94d, flatShading: true }));
-    plat.position.y = -.2; W.scene.add(plat);
+    const S = stage(ctx, { ...topDown(W, 11, 17), sky: 0x04030f, light: .75, sun: { color: 0xcfd8ff, intensity: 1.1, pos: [6, 14, 8] } });
+    starfield(S, 320, 80, -30);
+    const ball = S.sph(9, 0x6a4bd8, -44, -12, -60, { seg: 18 }); const pr = new THREE.Mesh(new THREE.RingGeometry(12, 16, 48), new THREE.MeshBasicMaterial({ color: 0xc9b8ff, transparent: true, opacity: .5, side: THREE.DoubleSide })); pr.position.copy(ball.position); pr.rotation.x = 1.25; S.root.add(pr);
+    S.sph(5, 0xe0724a, 36, 6, -52, { seg: 14 }); S.sph(30, 0x2a1a6a, 0, -40, -90, { basic: true, op: .25, seg: 10 });
+    const rocks = Array.from({ length: 10 }, (_, k) => { const a = k / 10 * 6.283, r = 20 + k % 4 * 5, m = S.sph(1 + k % 3 * .7, 0x6b6f80, Math.sin(a) * r, -2 + k % 3 * 2, Math.cos(a) * r - 4, { seg: 5 }); m.userData.a = a; m.userData.r = r; return m; });
+    S.anim((dt, tn) => rocks.forEach((m, k) => { const a = m.userData.a + tn * .03 * (k % 2 ? 1 : -1); m.position.x = Math.sin(a) * m.userData.r; m.position.z = Math.cos(a) * m.userData.r - 4; m.rotation.x += dt * .4; m.rotation.y += dt * .3; }));
+    const plat = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, .4, 28), new THREE.MeshStandardMaterial({ color: 0x59608f, flatShading: true }));
+    plat.position.y = -.2; S.root.add(plat);
+    const rim = new THREE.Mesh(new THREE.RingGeometry(.94, 1, 64), new THREE.MeshBasicMaterial({ color: 0x4dd0e1, side: THREE.DoubleSide })); rim.rotation.x = -Math.PI / 2; rim.position.y = .03; S.root.add(rim);
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
 
     const vec = () => {
@@ -29,6 +40,12 @@ export default {
 
     function step(dt) {
       R = Math.max(3.2, 8 - time * .13);
+      driveBots(ctx, st, dt, (id, s, sk) => {
+        if (Math.hypot(s.x, s.z) > R - 1.2 - 1.5 * sk) return [-s.x, -s.z];
+        let b = null, bd = 1e9; for (const o of ids) { if (o === id || !st[o].alive) continue; const d = Math.hypot(st[o].x - s.x, st[o].z - s.z); if (d < bd) { bd = d; b = st[o]; } }
+        if (!b) return null; if (bd < 2.8 && s.cd <= 0 && Math.random() < .35 + .5 * sk) s.dash = true;
+        return [b.x - s.x, b.z - s.z];
+      });
       const live = ids.filter(id => st[id].alive);
       for (const id of ids) {
         const s = st[id];
@@ -64,7 +81,7 @@ export default {
           W.set(id, x, z); const g = W.m.get(id)?.g; if (!g) continue;
           if (!alive) { fall[id] = (fall[id] || 0) + 30 * dt; g.position.y = Math.max(-40, g.position.y - fall[id] * dt); }
         }
-        plat.scale.set(R, 1, R);
+        plat.scale.set(R, 1, R); rim.scale.set(R, 1, R);
         el.innerHTML = `<h3>Alive: ${aliveN}/${ids.length}</h3><div>Dash: ${dashCd <= 0 ? 'READY' : dashCd.toFixed(1) + 's'}</div>`;
         if (!host || over) return;
         if ((acc += dt) >= .05) { acc = 0; ctx.send(pack()); }
@@ -84,7 +101,7 @@ export default {
       },
       cleanup() {
         removeEventListener('keydown', kd); removeEventListener('keyup', ku);
-        el.remove(); W.scene.remove(plat); W.showDeco(true);
+        el.remove(); S.cleanup();
         for (const id of ids) { const g = W.m.get(id)?.g; if (g) g.position.y = 0; }
       },
     };

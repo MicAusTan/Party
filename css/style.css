@@ -44,3 +44,9 @@ select{padding:4px;border-radius:6px;border:0;font:inherit}
 .lbl{font-size:12px;opacity:.7}.opt{display:flex;justify-content:space-between;align-items:center;gap:6px}
 .look .opt select{max-width:120px}
 #look{max-height:40vh;overflow-y:auto}
+
+#emotes{position:fixed;right:14px;bottom:14px;z-index:20;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+#emotes button{font-size:24px;line-height:1;padding:8px 10px;background:#000a;border:2px solid #fff4;border-radius:12px}
+#emotes button:hover{background:#000d;border-color:#ffd93d}
+#emoWheel{display:grid;grid-template-columns:repeat(4,46px);gap:6px;padding:8px;border-radius:14px;background:#000b}
+#emoWheel button{padding:6px 0}

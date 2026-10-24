@@ -1,9 +1,15 @@
 import * as THREE from 'three';
-// Boards are data: spaces {x, z, type, next:[indices], label?, bridge?} plus extras.
+import { groveDef } from './grove.js';
+// Boards are data: spaces {x, z, y?, type, next:[indices], label?, bridge?} plus extras.
+//   ground: true = the board brings its own terrain (hides the green lobby island) | bounds / cam: overview framing and follow-camera offsets
 //   warps: [a, b] paired warp spaces | monster: {start} roaming Wanderer | sky: day/night cycle by round
 //   starSpots: where the star may appear | decor(world, add, anim): animated scenery
 const TAU = Math.PI * 2, T = { b: 'blue', r: 'red', g: 'green', s: 'shop', d: 'duel', w: 'warp', t: 'toll', x: 'slot' };
-const finish = def => { def.n = def.sp.length; def.type = i => def.sp[i].type; def.spot = i => [def.sp[i].x, def.sp[i].z]; return def; };
+const finish = def => {
+  def.n = def.sp.length; def.type = i => def.sp[i].type; def.spot = i => [def.sp[i].x, def.sp[i].z]; def.y = i => def.sp[i].y || 0;     // y = ground height of a space (boards with terrain)
+  if (!def.bounds) { let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (const p of def.sp) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); } def.bounds = { x0: x0 - 5, x1: x1 + 5, z0: z0 - 5, z1: z1 + 4 }; }   // what the map-overview camera frames
+  return def;
+};
 
 // ---- Classic Ring: the original barebones board
 const CT = ['blue', 'blue', 'red', 'blue', 'green', 'blue'];
@@ -12,47 +18,8 @@ const classic = finish({
   sp: Array.from({ length: 24 }, (_, i) => ({ x: Math.sin(i / 24 * TAU) * 10, z: Math.cos(i / 24 * TAU) * 10, type: i % 12 === 9 ? 'shop' : i % 12 === 3 ? 'duel' : CT[i % 6], next: [(i + 1) % 24] })),
 });
 
-// ---- Twilight Grove: ring road + toll bridge shortcut over a lake, warp stones, a roaming monster, day -> night
-const RING = 'bbgbrbsbgbwbrbgbdbrbwbgbsb', RX = 12, RZ = 8.2;
-const gsp = [...RING].map((c, i) => ({ x: Math.sin(i / 26 * TAU) * RX, z: Math.cos(i / 26 * TAU) * RZ, type: T[c], next: [(i + 1) % 26] }));
-[['toll', 4.8], ['red', 1.6], ['green', -1.6], ['blue', -4.8]].forEach(([type, z], k) => gsp.push({ x: 0, z, type, bridge: true, next: [k < 3 ? 27 + k : 13] }));
-gsp[0].next = [1, 26]; gsp[1].label = '🌲 Ring road (safe, long)'; gsp[26].label = '🌉 Bridge shortcut (toll 3🪙)';
-
-function groveDecor(world, add, anim) {
-  let sd = 7; const r = () => (sd = sd * 16807 % 2147483647) / 2147483647;
-  const std = (c, o) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, ...o });
-  const shore = add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, .05, 28), std(0xe8d9a8))); shore.scale.set(7, 1, 5.2); shore.position.y = .03;
-  const lake = add(new THREE.Mesh(new THREE.CylinderGeometry(1, 1, .08, 28), std(0x3aa0d8, { transparent: true, opacity: .88 }))); lake.scale.set(6.3, 1, 4.5); lake.position.y = .06;
-  anim((dt, t) => lake.material.color.setHSL(.56, .7, .5 + .05 * Math.sin(t * 1.6)));
-  const trees = [];
-  for (let i = 0; i < 34; i++) {
-    const a = r() * TAU, f = 1.2 + r() * .3, g = new THREE.Group(), col = i % 3 ? 0x2e8b57 : 0x3fa34d;
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.15, .2, .9, 5), std(0x7b5230)); trunk.position.y = .45;
-    const c1 = new THREE.Mesh(new THREE.ConeGeometry(.85, 1.6, 6), std(col)); c1.position.y = 1.6;
-    const c2 = new THREE.Mesh(new THREE.ConeGeometry(.6, 1.2, 6), std(col)); c2.position.y = 2.4;
-    g.add(trunk, c1, c2); g.position.set(Math.sin(a) * RX * f, 0, Math.cos(a) * RZ * f); g.scale.setScalar(.8 + r() * .6); add(g); trees.push([g, r() * 6]);
-  }
-  anim((dt, t) => trees.forEach(([g, ph]) => { g.rotation.z = Math.sin(t * 1.4 + ph) * .06; }));
-  const clouds = [];
-  for (let i = 0; i < 6; i++) {
-    const g = new THREE.Group();
-    for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .85 })); b.scale.set(1.6, .7, 1); b.position.set(k * 1.4 - 1.4, k === 1 ? .4 : 0, 0); g.add(b); }
-    g.position.set(-24 + r() * 48, 3 + r() * 3, -16 + r() * 2); add(g); clouds.push([g, .4 + r() * .5]);
-  }
-  anim(dt => clouds.forEach(([g, sp]) => { g.position.x += dt * sp; if (g.position.x > 26) g.position.x = -26; }));
-  const ff = [];
-  for (let i = 0; i < 18; i++) {
-    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(.1, 0), new THREE.MeshBasicMaterial({ color: 0xfff176 })), a = r() * TAU, f = .6 + r() * .8;
-    m.userData = { x: Math.sin(a) * RX * f, z: Math.cos(a) * RZ * f, ph: r() * 6 }; add(m); ff.push(m);
-  }
-  anim((dt, t) => ff.forEach(m => { const u = m.userData; m.visible = world.decoOn && world.dark > .45; m.position.set(u.x + Math.sin(t * .8 + u.ph) * .8, 1 + Math.sin(t * 1.7 + u.ph) * .4, u.z + Math.cos(t * .7 + u.ph) * .8); }));
-}
-
-const grove = finish({
-  name: 'Twilight Grove', sp: gsp, warps: [10, 20], monster: { start: 13 }, sky: true, decor: groveDecor,
-  starSpots: [3, 5, 7, 9, 11, 15, 17, 19, 21, 23, 25, 28],
-});
-
+// ---- Twilight Grove: the big handcrafted valley lives in grove.js (terrain, 52-space ring road, two shortcuts, six districts)
+const grove = finish(groveDef);
 
 // ---- Ember Isle: outer lava road + inner crater ring (two forks). Each round the volcano erupts: a few tiles turn
 //      scorching hot and cost coins to land on. The star favours the crater ring (risk = reward).

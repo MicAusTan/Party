@@ -17,11 +17,12 @@ const rand = n => Math.random() * n | 0;
 
 export class Board {
   constructor(o) {
-    this.o = o; this.active = false; this.s = null; this.objs = []; this.anims = []; this.monT = null; this.mon = null; this.hot = [];
+    this.o = o; this.active = false; this.s = null; this.objs = []; this.anims = []; this.monT = null; this.mon = null; this.hot = []; this.mapView = false; this.undo = null; this.camInit = false; this.starY = 0;
     o.net.on('board', d => this.apply(d));
     o.net.on('roll', (_, from) => this.roll(from));
     o.net.on('act', (d, from) => this.act(from, d));
     addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat && !/INPUT|SELECT/.test(e.target.tagName)) this.tryRoll(); });
+    addEventListener('keydown', e => { if (e.code === 'KeyV' && !e.repeat && this.active && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { this.mapView = !this.mapView; this.render(); } });   // V = toggle the whole-map camera
     document.getElementById('board').onclick = e => {
       const b = e.target.closest('button'); if (!b || b.disabled) return;
       if (b.id === 'roll') this.tryRoll();
@@ -39,9 +40,9 @@ export class Board {
     if (d.board) setBoard(d.board);
     const pv = this.prev; this.s = d;
     if (!this.active) { this.active = true; this.build(); }
-    for (const id of d.order) this.o.world.set(id, ...this.place(id));
-    { const [sx, sz] = B.spot(d.star); this.star.position.x = sx; this.star.position.z = sz; }
-    if (d.mon >= 0 && this.mon) this.monT = B.spot(d.mon);
+    if (!(this.o.world.stageUp > 0)) for (const id of d.order) this.o.world.set(id, ...this.place(id));      // (a minigame stage owns the players' positions while it's up)
+    { const [sx, sz] = B.spot(d.star); this.star.position.x = sx; this.star.position.z = sz; this.starY = B.y(d.star); }
+    if (d.mon >= 0 && this.mon) this.monT = [...B.spot(d.mon), B.y(d.mon)];
     this.hot = d.hot || [];
     this.o.world.setSky(B.sky ? (B.skyFixed ?? (Math.min(d.round, d.rounds) - 1) / Math.max(1, d.rounds - 1)) : null);
     if (pv) this.diff(pv, d); this.prev = JSON.parse(JSON.stringify(d));
@@ -51,11 +52,11 @@ export class Board {
     const f = this.o.fx; if (!f) return;
     if (b.phase === 'moving' && a.phase !== 'moving') f('roll', b.roll);
     for (const id of b.order) {
-      if (a.pos[id] !== undefined && a.pos[id] !== b.pos[id] && b.phase === 'moving') f('step', id);
+      if (a.pos[id] !== undefined && a.pos[id] !== b.pos[id] && b.phase === 'moving') { f('step', id); this.o.world.hop(id, .4); }      // every step is a little hop
       if (a.coins[id] === undefined) continue;
-      if (b.stars[id] > a.stars[id]) f('star', id);
-      else if (b.coins[id] > a.coins[id]) f('coin', id);
-      else if (b.coins[id] < a.coins[id]) f(b.phase === 'shop' ? 'click' : 'lose', id);
+      if (b.stars[id] > a.stars[id]) { f('star', id); this.o.world.emote(id, 'cheer'); this.o.world.popIcon(id, '⭐'); }
+      else if (b.coins[id] > a.coins[id]) { f('coin', id); this.o.world.popIcon(id, '🪙'); }
+      else if (b.coins[id] < a.coins[id]) { f(b.phase === 'shop' ? 'click' : 'lose', id); if (b.phase !== 'shop') this.o.world.popIcon(id, '💸'); }
     }
     if (b.phase === 'end' && a.phase !== 'end') f('win', b.winner);
     if (b.hot?.length && JSON.stringify(a.hot) !== JSON.stringify(b.hot)) f('erupt');
@@ -64,37 +65,43 @@ export class Board {
   place(id) {
     const s = this.s, i = s.pos[id], [x, z] = B.spot(i), at = s.order.filter(k => s.pos[k] === i), k = at.indexOf(id);
     const a = k / at.length * Math.PI * 2, off = at.length > 1 ? .7 : 0;
-    return [x + Math.cos(a) * off, z + Math.sin(a) * off];
+    return [x + Math.cos(a) * off, z + Math.sin(a) * off, B.y(i)];
   }
   build() {
     const W = this.o.world, sc = W.scene, add = m => { sc.add(m); this.objs.push(m); W.deco.push(m); return m; }, anim = f => { W.anim.push(f); this.anims.push(f); };
     const std = (c, o) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, ...o });
-    B.sp.forEach(p => p.next.forEach(j => {   // paths (wooden bridge boards where flagged)
-      const q = B.sp[j], dx = q.x - p.x, dz = q.z - p.z, br = p.bridge || q.bridge;
-      const m = add(new THREE.Mesh(new THREE.BoxGeometry(br ? .9 : .5, .06, Math.hypot(dx, dz)), std(br ? 0x9a6b3a : 0xd9c9a3)));
-      m.position.set((p.x + q.x) / 2, .05, (p.z + q.z) / 2); m.rotation.y = Math.atan2(dx, dz);
+    if (B.ground) W.setIsland(false);        // the board brings its own terrain: no green lobby island underneath
+    B.sp.forEach(p => p.next.forEach(j => {   // paths: 3D ribbons that follow the terrain (wooden planks on bridges)
+      const q = B.sp[j], py = p.y || 0, qy = q.y || 0, dx = q.x - p.x, dz = q.z - p.z, br = p.bridge || q.bridge;
+      const m = add(new THREE.Mesh(new THREE.BoxGeometry(br ? 1.7 : .7, .08, Math.hypot(dx, qy - py, dz)), std(br ? 0x9a6b3a : 0xd9c9a3)));
+      m.position.set((p.x + q.x) / 2, (py + qy) / 2 + .07, (p.z + q.z) / 2); m.lookAt(q.x, qy + .07, q.z);
     }));
     const tiles = B.sp.map(p => {
       const g = new THREE.Group(), hex = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, .3, 6), std(COL[p.type])); hex.position.y = .15; g.add(hex); g.userData.hex = hex;
       const ic = this.icon(p.type, std); if (ic) { g.add(ic); g.userData.ic = ic; }
-      g.position.set(p.x, 0, p.z); return add(g);
+      g.position.set(p.x, p.y || 0, p.z); return add(g);
     });
     anim((dt, t) => tiles.forEach((g, i) => {
-      g.position.y = Math.sin(t * 2 + i * .7) * .04 + .02; const ic = g.userData.ic; if (ic?.userData.spin) ic.rotation.y += dt * 2;
+      g.position.y = (B.sp[i].y || 0) + Math.sin(t * 2 + i * .7) * .04 + .02; const ic = g.userData.ic; if (ic?.userData.spin) ic.rotation.y += dt * 2;
       const hot = this.hot.includes(i), m = g.userData.hex.material; m.emissive.setHex(hot ? 0xff3300 : 0); m.emissiveIntensity = hot ? .6 + .4 * Math.sin(t * 7) : 0;
     }));
     this.star = add(new THREE.Mesh(new THREE.IcosahedronGeometry(.6, 0), std(0xffd93d, { emissive: 0x665500 })));
-    anim((dt, t) => { this.star.position.y = 1.8 + Math.sin(t * 3) * .2; this.star.rotation.y += dt * 2; });
-    B.decor?.(W, add, anim);
+    anim((dt, t) => { this.star.position.y = this.starY + 1.8 + Math.sin(t * 3) * .2; this.star.rotation.y += dt * 2; });
+    this.undo = B.decor?.(W, add, anim) || null;
     if (B.monster) {
       const g = new THREE.Group(), body = new THREE.Mesh(new THREE.IcosahedronGeometry(.9, 0), std(0x6c3483)); body.position.y = 1; g.add(body);
       for (const k of [-1, 1]) {
         const e = new THREE.Mesh(new THREE.IcosahedronGeometry(.18, 0), new THREE.MeshBasicMaterial({ color: 0xffffff })); e.position.set(k * .3, 1.2, .7); g.add(e);
         const h = new THREE.Mesh(new THREE.ConeGeometry(.15, .5, 4), std(0xf1c40f)); h.position.set(k * .5, 1.9, 0); g.add(h);
       }
-      this.mon = add(g); const [mx, mz] = B.spot(B.monster.start); g.position.set(mx, 0, mz); this.monT = [mx, mz];
-      anim((dt, t) => { const k = Math.min(1, dt * 2), m = this.mon; if (!m || !this.monT) return; m.position.x += (this.monT[0] - m.position.x) * k; m.position.z += (this.monT[1] - m.position.z) * k; m.position.y = Math.abs(Math.sin(t * 5)) * .25; m.rotation.y = Math.sin(t) * .4; });
+      this.mon = add(g); const [mx, mz] = B.spot(B.monster.start), my = B.y(B.monster.start); g.position.set(mx, my, mz); this.monT = [mx, mz, my]; this.monY = my;
+      anim((dt, t) => { const k = Math.min(1, dt * 2), m = this.mon; if (!m || !this.monT) return; m.position.x += (this.monT[0] - m.position.x) * k; m.position.z += (this.monT[1] - m.position.z) * k; this.monY += (this.monT[2] - this.monY) * k; m.position.y = this.monY + Math.abs(Math.sin(t * 5)) * .25; m.rotation.y = Math.sin(t) * .4; });
     }
+    // fork markers: bobbing arrows above each way you can choose
+    const arrows = [0, 1, 2].map(() => { const a = add(new THREE.Mesh(new THREE.ConeGeometry(.5, 1.2, 4), std(0xffd93d, { emissive: 0x886600 }))); a.visible = false; return a; });
+    anim((dt, t) => { const s = this.s, show = s?.phase === 'choose' && s.opts; arrows.forEach((a, k) => { const o = show ? s.opts[k] : undefined; a.visible = o !== undefined && W.decoOn; if (o !== undefined) { const [x, z] = B.spot(o); a.position.set(x, B.y(o) + 2.7 + Math.sin(t * 5 + k) * .25, z); a.rotation.set(Math.PI, t * 2, 0); } }); });
+    // follow camera
+    this.camInit = false; const cam = dt => this.camStep(dt); W.anim.push(cam); this.anims.push(cam);
   }
   icon(t, std) {
     const g = new THREE.Group(); g.position.y = .3;
@@ -112,9 +119,29 @@ export class Board {
     return g;
   }
   teardown() {
-    this.prev = null; this.o.world.anim = this.o.world.anim.filter(f => !this.anims.includes(f)); this.anims = []; this.mon = null; this.o.world.setSky(null);
-    this.objs.forEach(m => this.o.world.scene.remove(m)); this.o.world.deco = this.o.world.deco.filter(o => !this.objs.includes(o)); this.objs = []; this.active = false; this.s = null;
+    const W = this.o.world;
+    this.prev = null; W.anim = W.anim.filter(f => !this.anims.includes(f)); this.anims = []; this.mon = null; W.setSky(null); this.undo?.(); this.undo = null;
+    this.objs.forEach(m => { W.scene.remove(m); m.traverse(n => { n.geometry?.dispose(); (Array.isArray(n.material) ? n.material : [n.material]).forEach(x => x?.dispose()); }); });
+    W.deco = W.deco.filter(o => !this.objs.includes(o)); this.objs = []; this.active = false; this.s = null; this.mapView = false;
+    W.setIsland(true); W.resetCam(); for (const e of W.m.values()) { e.ty = undefined; e.by = 0; e.g.position.y = 0; }       // back to the flat lobby
     this.render(); this.o.onChange();
+  }
+  // Camera: follows whoever is acting (zooming out at forks to show every way), and shows the whole map between rounds / when V is held on.
+  camStep(dt) {
+    const W = this.o.world, s = this.s; if (!s || !B || W.stageUp > 0) return;
+    const tn = Math.tan(W.cam.fov * Math.PI / 360), asp = W.cam.aspect || 16 / 9, b = B.bounds;
+    const overview = () => { const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, d = Math.max((b.x1 - b.x0) / 2 / (tn * asp), (b.z1 - b.z0) / 2 * .85 / tn) * 1.05; return [[cx, d * .8, cz + d * .6], [cx, 0, cz]]; };
+    const cur = s.order[s.turn], e = W.m.get(cur), acting = ['roll', 'moving', 'choose', 'shop', 'slot'].includes(s.phase) && e && !this.mapView;
+    let P, L;
+    if (acting) {
+      const H = B.cam?.h ?? 9.5, K = B.cam?.back ?? 8; let fx = e.g.position.x, fz = e.g.position.z, spread = 0; const fy = e.by || 0;
+      if (s.phase === 'choose' && s.opts) { const pts = [[fx, fz], ...s.opts.map(i => B.spot(i))]; const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cz = pts.reduce((a, p) => a + p[1], 0) / pts.length; spread = Math.max(...pts.map(p => Math.hypot(p[0] - cx, p[1] - cz))); fx = cx; fz = cz; }
+      P = [fx, fy + H + spread * .9, fz + K + spread * .7]; L = [fx, fy + .6, fz - 1.2];
+    } else [P, L] = overview();
+    if (!this.camInit) { const [P0, L0] = overview(); W.camPos.set(...P0); W.camLook.set(...L0); this.camInit = true; }      // start from the overview, then swoop in
+    W.camTw = null; const kp = 1 - Math.exp(-dt * 2.4), kl = 1 - Math.exp(-dt * 3.4);
+    W.camPos.x += (P[0] - W.camPos.x) * kp; W.camPos.y += (P[1] - W.camPos.y) * kp; W.camPos.z += (P[2] - W.camPos.z) * kp;
+    W.camLook.x += (L[0] - W.camLook.x) * kl; W.camLook.y += (L[1] - W.camLook.y) * kl; W.camLook.z += (L[2] - W.camLook.z) * kl;
   }
   render() {
     const el = document.getElementById('board'), s = this.s; el.hidden = !this.active; if (!this.active) return;
@@ -125,7 +152,7 @@ export class Board {
     if (mine && s.phase === 'shop') act = '<b>🛒 Shop</b>' + (s.stock || []).map(k => { const t = ITEMS[k]; return `<button data-a="buy" data-k="${k}"${coins < t.c || inv.length >= MAXI ? ' disabled' : ''}>${t.e} ${t.n} (${t.c}🪙)<br><small>${t.d}</small></button>`; }).join('') + '<button data-a="leave">Leave shop</button>';
     if (mine && s.phase === 'slot') act = '<b>🎰 Slot machine</b>' + [3, 6, 10].map(b => `<button data-a="bet" data-k="${b}"${coins < b ? ' disabled' : ''}>Bet ${b} 🪙</button>`).join('') + '<button data-a="leave">Walk away</button>';
     if (mine && s.phase === 'choose') act = '<b>🔀 Choose your path</b>' + s.opts.map(k => `<button data-a="go" data-k="${k}">${B.sp[k].label || 'Go this way'}</button>`).join('');
-    el.innerHTML = `<b>${B.name} · Round ${Math.min(s.round, s.rounds)} / ${s.rounds}</b>` +
+    el.innerHTML = `<b>${B.name} · Round ${Math.min(s.round, s.rounds)} / ${s.rounds}</b> <small style="opacity:.7">[V] ${this.mapView ? 'follow player' : 'map view'}</small>` +
       s.order.map(id => `<div style="color:${ps[id]?.color}">${id === cur && (s.phase === 'roll' || s.phase === 'shop' || s.phase === 'choose' || s.phase === 'slot') ? '▶ ' : ''}${nm(id)} 🪙${s.coins[id]} ⭐${s.stars[id]} ${(s.items[id] || []).map(k => ITEMS[k].e).join('')}</div>`).join('') +
       `<div>${s.log}</div>` + (s.phase === 'end' ? `<h3>🏆 ${nm(s.winner)} wins!</h3>` : '') + act;
   }
@@ -162,7 +189,7 @@ export class Board {
     const s = this.s, me = this.name(id); s.pos[id] = to;
     if (B.type(to) === 'toll') { const n = Math.min(3, s.coins[id]); s.coins[id] -= n; s.log = `${me} paid the bridge toll: -${n} 🪙`; }
     if (to === s.star && s.coins[id] >= 20) { s.coins[id] -= 20; s.stars[id]++; s.star = this.newStar(to); s.log = `${me} bought a ⭐!`; }
-    this.push(); setTimeout(() => this.walk(id, left - 1), 350);
+    this.push(); setTimeout(() => this.walk(id, left - 1), 400);
   }
   newStar(cur) { const l = B.starSpots.filter(i => i !== cur); return l[rand(l.length)]; }
   ahead(p, n) { while (n-- > 0) p = B.sp[p].next[0]; return p; }

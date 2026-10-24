@@ -4,6 +4,8 @@ import { Board } from './board.js';
 import { BOARDS } from './boards.js';
 import { sfx, toggleMute, isMuted } from './sfx.js';
 import { MINIGAMES } from './minigames/registry.js';
+import { EMOTES, playEmote } from './emotes.js';
+import { showPodium } from './victory.js';
 import { COLORS, ACCENTS, OPTS, DEFAULT_LOOK, cleanLook } from './look.js';
 
 const $ = id => document.getElementById(id);
@@ -11,7 +13,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const net = new Net(), world = new World($('c'));
 const board = new Board({ net, world, esc, players: () => players, playMg: startRandomMg, onChange: () => lock(), fx: (t, a) => fx(t, a) });
 let players = {}, me = null, mg = null, look = { ...DEFAULT_LOOK };
-const sim = {}, keys = {}; let cfg = { mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false };   // sim: host-only free-roam positions
+const sim = {}, keys = {}; let cfg = { mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false, coop: true, botSkill: 'normal', fill: 0 };   // sim: host-only free-roam positions
 
 try { cfg = { ...cfg, ...JSON.parse(localStorage.getItem('pg-cfg') || '{}') }; } catch {}
 try { look = { ...look, ...JSON.parse(localStorage.getItem('pg-look') || '{}') }; $('name').value = localStorage.getItem('pg-name') || ''; } catch {}
@@ -22,6 +24,37 @@ const myName = () => {
   try { localStorage.setItem('pg-name', n); } catch {}
   return n;
 };
+// ---- emotes: a small button (bottom-right) opens a row of emotes; everything is cosmetic and relayed by the host
+const eb = document.createElement('div'); eb.id = 'emotes'; eb.hidden = true;
+eb.innerHTML = `<div id="emoWheel" hidden>${EMOTES.map((e, i) => `<button data-e="${i}" tabindex="-1" title="${e.n}">${e.ch}</button>`).join('')}</div><button id="emoBtn" tabindex="-1" title="Emotes">😀</button>`;
+document.body.append(eb);
+const emoOK = () => { if (!me) return false; const d = mg && MINIGAMES[mg.key]; return !(d && d.emotes === false); };   // minigames opt out with `emotes: false`
+const emoSync = () => { eb.hidden = !emoOK(); if (eb.hidden) eb.querySelector('#emoWheel').hidden = true; };
+let emoAt = 0; const lastEmo = {};
+function relayEmote(id, i) {            // host: validate + rate-limit, play, tell everyone
+  i |= 0; if (!EMOTES[i] || !players[id]) return;
+  const t = performance.now(); if (t - (lastEmo[id] || 0) < 400) return; lastEmo[id] = t;
+  playEmote(world, id, i, id === me); net.broadcast('emote', { id, e: i });
+}
+function sendEmote(i) {
+  const t = performance.now(); if (t - emoAt < 600) return; emoAt = t;     // tiny cooldown, just a safety rail
+  if (net.isHost) relayEmote(me, i); else { playEmote(world, me, i, true); net.send('emote', { e: i }); }
+}
+eb.addEventListener('pointerdown', e => e.stopPropagation());               // never count as a click for minigames
+eb.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return; b.blur();
+  if (b.id === 'emoBtn') { const w = eb.querySelector('#emoWheel'); w.hidden = !w.hidden; return; }
+  sendEmote(+b.dataset.e); eb.querySelector('#emoWheel').hidden = true;
+});
+net.on('emote', (d, from) => { if (net.isHost) relayEmote(from, d.e); else if (d.id !== me && EMOTES[d.e | 0]) playEmote(world, d.id, d.e | 0, false); });
+
+// ---- victory podium (cosmetic; blocks free-roam movement while it's up)
+let podium = null;
+const endPodium = () => { podium?.end(); podium = null; };
+function podiumFor(order, ranks, o) { endPodium(); const me_ = podium = showPodium(world, players, order, ranks, { ...o, onEnd: () => { if (podium === me_) podium = null; } }); }
+function finalPodium(order, ranks) { if (order.length) podiumFor(order, ranks, { secs: 7 }); }
+const rankBy = (ids, key) => { const o = [...ids].sort((a, b) => key(b) - key(a)); return [o, o.map(id => o.findIndex(x => key(x) === key(id)))]; };
+
 const toast = (msg, ms = 1200) => { $('banner').innerHTML = `<div>${esc(msg)}</div>`; setTimeout(() => { if (!mg) $('banner').innerHTML = ''; }, ms); };
 $('code').onkeydown = e => { if (e.key === 'Enter') $('join').click(); };
 $('room').onclick = () => navigator.clipboard?.writeText($('room').textContent).then(() => toast('Room code copied!'));
@@ -38,7 +71,7 @@ function lock() {
   $('start').textContent = cfg.mode === 'party' ? '▶ Start minigame party' : '▶ Start board game'; $('start').disabled = n < need; $('startHint').hidden = !lobby || n >= need;
   $('startHint').textContent = `Waiting for players (${n}/${need} needed). Share the room code!`;
   $('stopMg').hidden = !inMg; $('endGame').hidden = !(inGame && (!inMg || !!partyState)); renderParty();
-  $('practice').hidden = !practice; $('testRow').hidden = !lobby;
+  $('practice').hidden = !practice; $('testRow').hidden = !lobby; emoSync();
 }
 
 function readInput() {
@@ -90,8 +123,14 @@ renderLook();
 $('lookBtn').onclick = () => { lookOpen = !lookOpen; lock(); };
 $('fold').onclick = () => { folded = !folded; lock(); };
 
+function fillBots() {   // top the table up with bots to the host's 'fill seats' target (previous fill bots are replaced)
+  for (const id of Object.keys(players)) if (players[id].fill) { delete players[id]; delete sim[id]; board.onLeave(id); }
+  while (Object.keys(players).length < (+cfg.fill || 0)) addDummy(true);
+  pushLobby();
+}
 function startGame() {
-  if (!net.isHost || mg || board.active || partyState || Object.keys(players).length < (practice ? 1 : 2)) return;
+  if (!net.isHost || mg || board.active || partyState) return;
+  fillBots(); if (Object.keys(players).length < (practice ? 1 : 2)) return;
   if (cfg.mode === 'party') return startParty();
   board.start(cfg.rounds, cfg.board === 'random' ? Object.keys(BOARDS)[Math.random() * Object.keys(BOARDS).length | 0] : cfg.board);
 }
@@ -102,13 +141,18 @@ function syncModeUI() {
 }
 // ---- minigame party: random minigames back to back, scores add up (host runs it, everyone renders partyState)
 const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+// Minigames allowed by the host's pool + the co-op switch (falls back to everything if that leaves nothing)
+function poolKeys() {
+  const all = Object.keys(MINIGAMES), on = all.filter(k => !cfg.off.includes(k) && (cfg.coop !== false || !MINIGAMES[k].coop));
+  return on.length ? on : all;
+}
 function buildQueue() {
-  const all = Object.keys(MINIGAMES), on = all.filter(k => !cfg.off.includes(k)), pool = on.length ? on : all;
+  const pool = poolKeys();
   if (cfg.partyN === 'all') return shuffle(pool);
   const n = +cfg.partyN || 10; if (!cfg.repeats) return shuffle(pool).slice(0, n);
   const q = []; while (q.length < n) { const k = pool[Math.random() * pool.length | 0]; if (pool.length > 1 && k === q[q.length - 1]) continue; q.push(k); } return q;
 }
-function setParty(s) { partyState = s; net.broadcast('party', s || { off: true }); lock(); }
+function setParty(s) { if (s?.over) partyFinal(); partyState = s; net.broadcast('party', s || { off: true }); lock(); }
 function startParty() {
   const queue = buildQueue(); party = { queue, i: 0 };
   for (const id in players) players[id].score = 0; pushLobby();
@@ -131,18 +175,19 @@ function renderParty() {
     ps.map(p => `<div style="color:${p.color}">${esc(p.name)} <b>${p.score || 0}</b></div>`).join('') +
     (partyState.over ? `<h3>🏆 ${wins} ${ps.filter(p => (p.score || 0) === top).length > 1 ? 'win' : 'wins'}!</h3>` : '');
 }
-net.on('party', d => { if (net.isHost) return; partyState = d.off ? null : d; lock(); });
+net.on('party', d => { if (net.isHost) return; if (d.over && !partyState?.over) partyFinal(); partyState = d.off ? null : d; lock(); });
+function partyFinal() { const ids = Object.keys(players), [o, r] = rankBy(ids, id => players[id].score || 0); finalPodium(o, r); }
 
 function enter(code) {
   $('menu').hidden = true; $('panel').hidden = false; $('room').textContent = code; lookOpen = false; folded = false;
   if (net.isHost) {
     $('start').onclick = startGame;
     $('stopMg').onclick = () => mg?.finish?.([]);
-    $('endGame').onclick = () => { if (confirm('End the game for everyone and go back to the lobby?')) { if (partyState) stopParty(); else board.quit(); } };
+    $('endGame').onclick = () => { if (confirm('End the game for everyone and go back to the lobby?')) { endPodium(); if (partyState) stopParty(); else board.quit(); } };
     $('settingsBtn').onclick = () => $('settings').hidden = false;
     $('settingsClose').onclick = () => $('settings').hidden = true;
     $('boardSel').innerHTML = Object.entries(BOARDS).map(([k, b]) => `<option value="${k}">${b.name}</option>`).join('') + '<option value="random">🎲 Random board</option>';
-    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; syncModeUI();
+    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; $('coop').checked = cfg.coop !== false; $('botSkill').value = cfg.botSkill; $('fill').value = cfg.fill; syncModeUI();
     $('rounds').innerHTML = [4, 8, 12].map(n => `<option>${n}</option>`).join(''); $('rounds').value = cfg.rounds;
     $('pool').innerHTML = Object.entries(MINIGAMES).map(([k, g]) => `<label><input type="checkbox" data-mg="${k}"${cfg.off.includes(k) ? '' : ' checked'}> ${esc(g.name)}</label>`).join('');
     $('settings').onchange = e => {
@@ -151,6 +196,9 @@ function enter(code) {
       else if (e.target.id === 'repeats') cfg.repeats = e.target.checked;
       else if (e.target.id === 'boardSel') cfg.board = e.target.value;
       else if (e.target.id === 'rounds') cfg.rounds = +e.target.value;
+      else if (e.target.id === 'coop') cfg.coop = e.target.checked;
+      else if (e.target.id === 'botSkill') cfg.botSkill = e.target.value;
+      else if (e.target.id === 'fill') cfg.fill = +e.target.value;
       else if (e.target.dataset.mg) { const k = e.target.dataset.mg; cfg.off = cfg.off.filter(x => x !== k); if (!e.target.checked) cfg.off.push(k); }
       saveCfg(); syncModeUI(); lock();
     };
@@ -168,9 +216,9 @@ $('solo').onclick = () => {
   players = {}; players.host = { id: 'host', name: myName(), ...mkLook(look, 'host') };
   enter('PRACTICE');
 };
-function addDummy() {
+function addDummy(fill) {
   const n = Object.keys(players).length; if (n >= 8) return; const id = 'bot' + (++botN);
-  players[id] = { id, name: 'Dummy ' + botN, ...mkLook({ color: COLORS[n % COLORS.length] }, id), bot: true };
+  players[id] = { id, name: 'Bot ' + botN, fill: !!fill, ...mkLook({ color: COLORS[n % COLORS.length] }, id), bot: true };
   sim[id] = { x: (n % 5) * 2 - 4, z: 2, ix: 0, iz: 0 }; if (partyState) players[id].score = 0; pushLobby(); if (board.active) board.addPlayer(id);
 }
 function removeDummy() {
@@ -214,19 +262,22 @@ net.on('queued', () => toast('A minigame is in progress — you\'ll join when it
 net.on('closed', () => alert('Host disconnected'));
 // ---- client-side
 net.on('lobby', d => setPlayers(d));
-net.on('snap', d => { if (!net.isHost && !board.active && !mg) for (const id in d) world.set(id, d[id][0], d[id][1]); });
+net.on('snap', d => { if (!net.isHost && !board.active && !mg && !podium) for (const id in d) world.set(id, d[id][0], d[id][1]); });
 
 // ---- minigames
 function startRandomMg(key) {
   if (mg || !net.isHost) return;
-  const all = Object.keys(MINIGAMES), on = all.filter(k => !cfg.off.includes(k)), ks = on.length ? on : all; key ||= ks[Math.random() * ks.length | 0];
+  const ks = poolKeys(); key ||= ks[Math.random() * ks.length | 0];
   const seed = Math.random() * 2 ** 31 | 0;
   net.broadcast('mg:start', { key, seed }); startMg(key, seed);
 }
+// Bot skill 0..1 (host's setting + a stable per-bot wobble so bots differ). Host-only; never use ctx.rng for bots.
+const SKILL = { easy: .25, normal: .5, hard: .8 }, skJit = {};
+const botSkill = id => Math.max(.05, Math.min(.98, (SKILL[cfg.botSkill] ?? .5) + (skJit[id] ??= (Math.random() - .5) * .3)));
 function startMg(key, seed) {
-  const def = MINIGAMES[key]; $('hud').innerHTML = ''; mg = { key, inst: null }; lock();
+  endPodium(); const def = MINIGAMES[key]; $('hud').innerHTML = ''; mg = { key, inst: null }; lock();
   const ctx = {
-    players, me, world, isHost: net.isHost, hud: $('hud'), esc, rng: mulberry(seed),
+    players, me, world, isHost: net.isHost, hud: $('hud'), esc, rng: mulberry(seed), skill: botSkill,
     send: m => net.isHost ? net.broadcast('mg:msg', m) : net.send('mg:msg', m),
     finish: (pl, rk) => {
       rk ||= pl.map((_, i) => i);
@@ -249,6 +300,7 @@ function startMg(key, seed) {
 function endMg(pl, rk = pl.map((_, i) => i)) {
   sfx(rk[pl.indexOf(me)] === 0 ? 'win' : 'click');
   mg?.inst?.cleanup(); mg = null; lock();
+  if (pl.length) podiumFor(pl, rk, { secs: 4 });
   const pts = i => board.active ? `🪙${board.reward(rk[i])}${board.s?.mega && rk[i] === 0 ? ' +⭐' : ''}` : `+${pl.length - rk[i]}`;
   $('hud').innerHTML = `<div class="mg"><h2>${pl.length ? 'Results' : 'Stopped'}</h2>${pl.map((id, i) => `<div>${rk[i] + 1}. ${esc(players[id]?.name ?? '?')} <b>${pts(i)}</b></div>`).join('')}</div>`;
   setTimeout(() => { if (!mg) $('hud').innerHTML = ''; }, 4000);
@@ -264,7 +316,7 @@ function loop(t) {
   if (me) {
     const i = readInput();
     if (net.isHost) {
-      if (!board.active && !mg) {
+      if (!board.active && !mg && !podium) {
         sim.host.ix = i.x; sim.host.iz = i.z;
         for (const id in sim) {
           const s = sim[id]; s.x += s.ix * 7 * dt; s.z += s.iz * 7 * dt;
@@ -292,6 +344,7 @@ function burstAt(id, c, n) { const g = world.m.get(id)?.g; if (g) world.burst(g.
 function popup(t) { $('banner').innerHTML = `<h2>${t}</h2>`; setTimeout(() => { if (!mg) $('banner').innerHTML = ''; }, 900); }
 function fx(t, a) {
   if (t === 'roll') { sfx('roll'); popup('🎲 ' + a); return; }
+  if (t === 'win' && board.s) { const s = board.s, ids = s.order.filter(id => players[id]), [o, r] = rankBy(ids, id => s.stars[id] * 1e6 + s.coins[id]); finalPodium(o, r); }
   if (t === 'mega') { sfx('star'); popup('⭐ MEGA MINIGAME ⭐'); return; }
   sfx(t);
   if (t === 'coin') burstAt(a, '#ffd93d'); else if (t === 'lose') burstAt(a, '#e74c3c', 10);

@@ -35,7 +35,7 @@
     </div>
     <div id="practice" hidden>
       <small>Practice mode</small>
-      <div class="row"><button data-p="add">+ Dummy</button><button data-p="rem">- Dummy</button></div>
+      <div class="row"><button data-p="add">+ Bot</button><button data-p="rem">- Bot</button></div>
       <div id="testRow"><select id="testSel"></select><button id="testGo">Test minigame</button></div>
       <button data-p="exit" class="ghost">Exit practice</button>
     </div>
@@ -55,6 +55,9 @@
     <label id="repeatRow"><input type="checkbox" id="repeats"> Allow the same minigame more than once</label>
     <small>Party mode: random minigames back to back, points add up, highest total wins.</small>
   </div>
+  <label><input type="checkbox" id="coop"> Co-op minigames (everyone wins or loses together)</label>
+  <div class="srow">Fill empty seats with bots up to <select id="fill"><option value="0">Off</option><option value="3">3 players</option><option value="4">4 players</option><option value="6">6 players</option><option value="8">8 players</option></select></div>
+  <div class="srow">Bot skill <select id="botSkill"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>
   <div class="srow"><b>Minigame pool</b><span><button id="poolAll" class="ghost">All</button> <button id="poolNone" class="ghost">None</button></span></div>
   <div id="pool"></div>
   <button id="settingsClose">Done</button>

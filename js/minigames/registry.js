@@ -34,4 +34,5 @@ import balloonPop from './balloonPop.js';
 import oddOneOut from './oddOneOut.js';
 import redLight from './redLight.js';
 import flagRush from './flagRush.js';
-export const MINIGAMES = { buttonMash, memoryRun, shoveOff, rounds, quickDraw, stopClock, mathRace, coinGrab, dodgeRain, hotPotato, targetClick, colorFloor, mazeRace, memoryMatch, tugOfWar, higherLower, typingRace, rhythmRush, hillHold, relayRace, towerStack, syncPulse, snowballFight, simonSays, numberSort, colorClash, balloonPop, oddOneOut, redLight, flagRush };
+import lastStand from './lastStand.js';
+export const MINIGAMES = { buttonMash, memoryRun, shoveOff, rounds, quickDraw, stopClock, mathRace, coinGrab, dodgeRain, hotPotato, targetClick, colorFloor, mazeRace, memoryMatch, tugOfWar, higherLower, typingRace, rhythmRush, hillHold, relayRace, towerStack, syncPulse, snowballFight, simonSays, numberSort, colorClash, balloonPop, oddOneOut, redLight, flagRush, lastStand };

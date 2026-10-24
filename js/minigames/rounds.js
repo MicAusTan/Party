@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { sfx } from '../sfx.js';
+import { stage } from './stage.js';
+import { starfield } from './kit.js';
+// Set: neon rooftops at night. A layered skyline with lit windows behind the fighting platforms, a big moon, a glowing sign, and neon edges on every ledge.
 // Rounds-style 2.5D shooter. Host simulates (fixed 60Hz), clients send input + render snapshots.
 // First to NEED round wins. Everyone except the round winner picks one of 3 random cards.
 const CARDS = [
@@ -17,16 +20,25 @@ const PL = [{ x0: -14, x1: 14, top: 0, th: 3 }, { x0: -9, x1: -3, top: 3.2, th: 
 const NEED = 2, MAXR = 5;
 
 export default {
-  name: 'Rounds', desc: 'First to 2 round wins. Losers pick upgrade cards! A/D move, W/Space jump, mouse aims, click shoots.',
+  emotes: false, name: 'Rounds', desc: 'First to 2 round wins. Losers pick upgrade cards! A/D move, W/Space jump, mouse aims, click shoots.',
   create(ctx) {
     const W = ctx.world, ids = Object.keys(ctx.players), host = ctx.isHost, me = ctx.me, scene = W.scene;
-    const oldPos = W.cam.position.clone(); W.showDeco(false); W.cam.position.set(0, 5.5, 22); W.cam.lookAt(0, 5, 0);
+    const S = stage(ctx, { sky: 0x0b0c24, fog: { color: 0x0b0c24, near: 45, far: 110 }, light: .8, sun: { color: 0xb0c0ff, intensity: .9, pos: [4, 14, 12] }, cam: { pos: [0, 5.5, 22], look: [0, 5, 0] }, camFrom: [0, 9, 36], camT: 1.4 });
     const objs = [], bm = [], vv = new THREE.Vector3();
     PL.forEach((p, i) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(p.x1 - p.x0, p.th, 3), new THREE.MeshStandardMaterial({ color: i ? 0xa0785a : 0x5a7d4a, flatShading: true }));
-      m.position.set((p.x0 + p.x1) / 2, p.top - p.th / 2, 0); scene.add(m); objs.push(m);
+      const m = new THREE.Mesh(new THREE.BoxGeometry(p.x1 - p.x0, p.th, 3), new THREE.MeshStandardMaterial({ color: i ? 0x4b3f6b : 0x39405a, emissive: i ? 0x150a2a : 0x0a0d1a, flatShading: true }));
+      m.position.set((p.x0 + p.x1) / 2, p.top - p.th / 2, 0); S.root.add(m); objs.push(m);
     });
-    const aim = new THREE.Mesh(new THREE.SphereGeometry(.15, 4, 3), new THREE.MeshBasicMaterial({ color: 0xffffff })); scene.add(aim);
+    PL.forEach((p, i) => S.box(p.x1 - p.x0 + .05, .09, 3.05, i % 2 ? 0xff4dd8 : 0x4dd0e1, (p.x0 + p.x1) / 2, p.top - .05, 0, { basic: true }));               // neon ledge edges
+    S.box(28.6, 14, 3.2, 0x151832, 0, -14, 0); for (let k = 0; k < 6; k++) { S.box(1.6, 1.1, 1.2, 0x2a2f55, -11 + k * 4.4, 0, -.7); if (k % 2) { S.cyl(.05, .05, 2.4, 0x8a90b0, -11 + k * 4.4, 1.1, -.7, { seg: 4 }); S.sph(.12, 0xff3b30, -11 + k * 4.4, 3.5, -.7, { basic: true, seg: 5 }); } }   // rooftop clutter
+    S.sph(3.4, 0xfff2c0, 22, 22, -45, { basic: true }); starfield(S, 160, 75, 8);
+    const skyline = (z, w, h, y, dark, seed) => {
+      const sc = S.screen(w, h, 1024, 512); sc.mesh.position.set(0, y, z); sc.mesh.material.transparent = true; let s0 = seed; const r = () => (s0 = (s0 * 16807) % 2147483647) / 2147483647;
+      sc.draw((c, cw, ch) => { c.clearRect(0, 0, cw, ch); let x = 0; while (x < cw) { const bw = 50 + r() * 90, bh = 120 + r() * 340; c.fillStyle = dark; c.fillRect(x, ch - bh, bw, bh); for (let wy = ch - bh + 14; wy < ch - 16; wy += 22) for (let wx = x + 8; wx < x + bw - 12; wx += 18) if (r() < .4) { c.fillStyle = ['#ffe9a0', '#7fe9ff', '#ff9ad8'][r() * 3 | 0]; c.fillRect(wx, wy, 8, 11); } x += bw + 4 + r() * 12; } });
+    };
+    skyline(-38, 130, 36, 16, '#0d0f2b', 7); skyline(-24, 100, 30, 12, '#161a40', 19);
+    const sign = S.screen(8, 2, 512, 128); sign.mesh.position.set(-16, 14, -22); sign.draw((c, w, h) => { c.fillStyle = '#12020c'; c.fillRect(0, 0, w, h); c.strokeStyle = '#ff4dd8'; c.lineWidth = 8; c.strokeRect(8, 8, w - 16, h - 16); c.fillStyle = '#ff4dd8'; c.font = 'bold 76px sans-serif'; c.textAlign = 'center'; c.fillText('ROUNDS', w / 2, 92); });
+    const aim = new THREE.Mesh(new THREE.SphereGeometry(.15, 4, 3), new THREE.MeshBasicMaterial({ color: 0xffffff })); S.root.add(aim);
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
 
     // shared view state
@@ -82,6 +94,27 @@ export default {
       CARDS[c].f(st[id].st); picked[id] = true;
       if (Object.keys(offers).every(k => picked[k])) startRound();
     }
+    // bots (host only, Math.random): pick a target, keep ~8 away, jump toward higher ledges, aim with skill-based error
+    const bb = {};
+    function botThink(dt) {
+      for (const id of ids) {
+        if (!ctx.players[id]?.bot) continue; const s = st[id], sk = ctx.skill?.(id) ?? .5, b = bb[id] ??= { t: 0, dir: 0, j: 0, err: 0, pk: 0, burst: 0 };
+        if (phase === 'pick') { if (offers[id] && !picked[id] && (b.pk += dt) > .8 + Math.random() * 2) { const o = offers[id]; pick(id, o[Math.random() * o.length | 0]); b.pk = 0; } continue; }
+        if (phase !== 'fight' || !s.alive) continue;
+        let tg = null, td = 1e9; for (const o of ids) { if (o === id || !st[o].alive) continue; const d = Math.hypot(st[o].x - s.x, st[o].y - s.y); if (d < td) { td = d; tg = st[o]; } }
+        if (!tg) { applyInput(id, { x: 0, j: 0, a: 0, f: 0 }); continue; }
+        if ((b.t -= dt) <= 0) {
+          b.t = (.45 - .3 * sk) * (.7 + Math.random() * .6); const dx = tg.x - s.x, want = Math.abs(dx) > 9 ? Math.sign(dx) : Math.abs(dx) < 5 ? -Math.sign(dx) : (Math.random() < .5 ? 0 : Math.sign(dx) * (Math.random() < .5 ? 1 : -1));
+          b.dir = want; b.j = (tg.y - s.y > 2 || (Math.random() < .12 + .1 * sk)) ? 1 : 0; b.err = (Math.random() - .5) * (1 - sk) * .7;
+          b.burst = Math.random() < .5 + .4 * sk ? .5 + Math.random() * .6 : 0;
+        }
+        if (s.x > 12.2 && b.dir > 0) b.dir = -1; if (s.x < -12.2 && b.dir < 0) b.dir = 1;
+        b.burst -= dt;
+        const a = Math.atan2(tg.y - s.y, tg.x - s.x) + b.err;
+        applyInput(id, { x: b.dir, j: b.j && !s.gr ? 0 : b.j, a: +a.toFixed(2), f: b.burst > 0 ? 1 : 0 });
+        if (b.j) b.j = 0;
+      }
+    }
     function step(dt) {
       if (phase !== 'fight' || over) return;
       if (freeze > 0) { freeze -= dt; return; }
@@ -129,9 +162,10 @@ export default {
         intro -= dt;
         const inp = { x: (held.KeyD || held.ArrowRight ? 1 : 0) - (held.KeyA || held.ArrowLeft ? 1 : 0), j: (held.Space || held.KeyW || held.ArrowUp) ? 1 : 0, a: +aimAngle().toFixed(2), f: fire && phase === 'fight' ? 1 : 0 };
         if (host) {
-          applyInput(me, inp); simAcc = Math.min(.1, simAcc + dt);
+          applyInput(me, inp); botThink(dt); simAcc = Math.min(.1, simAcc + dt);
           while (simAcc >= 1 / 60) { step(1 / 60); simAcc -= 1 / 60; }
-          if (phase === 'pick' && !over && (pickT -= dt) <= 0) { for (const id in offers) if (!picked[id]) pick(id, offers[id][0]); }
+          // (iterate a snapshot: pick() can start the next round and replace `offers`)
+          if (phase === 'pick' && !over && (pickT -= dt) <= 0) { for (const [id, o] of Object.entries(offers)) if (!picked[id]) pick(id, o[0]); }
           const sn = pack(); snap = sn.p; bl = sn.b;
           if ((acc += dt) >= .05) { acc = 0; ctx.send(sn); }
         } else {
@@ -146,7 +180,7 @@ export default {
         const g = W.m.get(me)?.g; aim.visible = !!snap?.[me]?.[4];
         if (g) aim.position.set(g.position.x + Math.cos(inp.a) * 2, g.position.y + 1 + Math.sin(inp.a) * 2, 0);
         if (bl.length > prevBl) sfx('shoot'); prevBl = bl.length;
-        while (bm.length < bl.length) { const m = new THREE.Mesh(new THREE.SphereGeometry(.18, 4, 3), new THREE.MeshBasicMaterial({ color: 0xffee58 })); scene.add(m); bm.push(m); }
+        while (bm.length < bl.length) { const m = new THREE.Mesh(new THREE.SphereGeometry(.18, 4, 3), new THREE.MeshBasicMaterial({ color: 0xffee58 })); S.root.add(m); bm.push(m); }
         bm.forEach((m, i) => { const b = bl[i]; m.visible = !!b; if (b) m.position.set(b[0], b[1], 0); });
         // HUD (only rewritten when changed, so card buttons stay clickable)
         const mine = offers?.[me];
@@ -166,8 +200,7 @@ export default {
       cleanup() {
         removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('pointermove', pm);
         removeEventListener('pointerdown', pd); removeEventListener('pointerup', pu); removeEventListener('blur', pu);
-        [...objs, aim, ...bm].forEach(m => scene.remove(m)); el.remove();
-        W.cam.position.copy(oldPos); W.cam.lookAt(0, 0, 0); W.showDeco(true);
+        el.remove(); S.cleanup();
         for (const id of ids) { const g = W.m.get(id)?.g; if (g) { g.position.y = 0; g.visible = true; } }
       },
     };
