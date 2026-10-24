@@ -35,4 +35,7 @@ import oddOneOut from './oddOneOut.js';
 import redLight from './redLight.js';
 import flagRush from './flagRush.js';
 import lastStand from './lastStand.js';
-export const MINIGAMES = { buttonMash, memoryRun, shoveOff, rounds, quickDraw, stopClock, mathRace, coinGrab, dodgeRain, hotPotato, targetClick, colorFloor, mazeRace, memoryMatch, tugOfWar, higherLower, typingRace, rhythmRush, hillHold, relayRace, towerStack, syncPulse, snowballFight, simonSays, numberSort, colorClash, balloonPop, oddOneOut, redLight, flagRush, lastStand };
+import tiltTable from './tiltTable.js';
+import parcelPanic from './parcelPanic.js';
+import echoChain from './echoChain.js';
+export const MINIGAMES = { buttonMash, memoryRun, shoveOff, rounds, quickDraw, stopClock, mathRace, coinGrab, dodgeRain, hotPotato, targetClick, colorFloor, mazeRace, memoryMatch, tugOfWar, higherLower, typingRace, rhythmRush, hillHold, relayRace, towerStack, syncPulse, snowballFight, simonSays, numberSort, colorClash, balloonPop, oddOneOut, redLight, flagRush, lastStand, tiltTable, parcelPanic, echoChain };

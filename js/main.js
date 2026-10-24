@@ -1,3 +1,4 @@
+import { stepLobby, doPush, pushFx, applySnap, clearRag } from './shove.js';
 import { Net } from './net.js';
 import { World } from './world.js';
 import { Board } from './board.js';
@@ -11,9 +12,9 @@ import { COLORS, ACCENTS, OPTS, DEFAULT_LOOK, cleanLook } from './look.js';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const net = new Net(), world = new World($('c'));
-const board = new Board({ net, world, esc, players: () => players, playMg: startRandomMg, onChange: () => lock(), fx: (t, a) => fx(t, a) });
+const board = new Board({ net, world, esc, players: () => players, playMg: startRandomMg, onChange: () => lock(), fx: (t, a) => fx(t, a), onError: m => toast('⚠ ' + m + ' (please screenshot this!)', 8000) });
 let players = {}, me = null, mg = null, look = { ...DEFAULT_LOOK };
-const sim = {}, keys = {}; let cfg = { mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false, coop: true, botSkill: 'normal', fill: 0 };   // sim: host-only free-roam positions
+const sim = {}, keys = {}; let cfg = { mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false, team: true, botSkill: 'normal', fill: 0 };   // sim: host-only free-roam positions
 
 try { cfg = { ...cfg, ...JSON.parse(localStorage.getItem('pg-cfg') || '{}') }; } catch {}
 try { look = { ...look, ...JSON.parse(localStorage.getItem('pg-look') || '{}') }; $('name').value = localStorage.getItem('pg-name') || ''; } catch {}
@@ -66,7 +67,7 @@ function lock() {
   $('panel').classList.toggle('compact', !lobby); $('panel').classList.toggle('folded', folded);
   $('fold').textContent = folded ? '+' : '–';
   $('players').hidden = !lobby; $('lookBtn').hidden = lobby; $('look').hidden = !lobby && !lookOpen;
-  $('waitMsg').hidden = host || !lobby; $('hostCtl').hidden = !host;
+  $('waitMsg').hidden = host || !lobby; $('hostCtl').hidden = !host; $('pushHint').hidden = !lobby;
   $('start').hidden = $('settingsBtn').hidden = !lobby;
   $('start').textContent = cfg.mode === 'party' ? '▶ Start minigame party' : '▶ Start board game'; $('start').disabled = n < need; $('startHint').hidden = !lobby || n >= need;
   $('startHint').textContent = `Waiting for players (${n}/${need} needed). Share the room code!`;
@@ -141,9 +142,9 @@ function syncModeUI() {
 }
 // ---- minigame party: random minigames back to back, scores add up (host runs it, everyone renders partyState)
 const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
-// Minigames allowed by the host's pool + the co-op switch (falls back to everything if that leaves nothing)
+// Minigames allowed by the host's pool + the team-games switch (falls back to everything if that leaves nothing)
 function poolKeys() {
-  const all = Object.keys(MINIGAMES), on = all.filter(k => !cfg.off.includes(k) && (cfg.coop !== false || !MINIGAMES[k].coop));
+  const all = Object.keys(MINIGAMES), on = all.filter(k => !cfg.off.includes(k) && (cfg.team !== false || !MINIGAMES[k].team));
   return on.length ? on : all;
 }
 function buildQueue() {
@@ -187,7 +188,7 @@ function enter(code) {
     $('settingsBtn').onclick = () => $('settings').hidden = false;
     $('settingsClose').onclick = () => $('settings').hidden = true;
     $('boardSel').innerHTML = Object.entries(BOARDS).map(([k, b]) => `<option value="${k}">${b.name}</option>`).join('') + '<option value="random">🎲 Random board</option>';
-    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; $('coop').checked = cfg.coop !== false; $('botSkill').value = cfg.botSkill; $('fill').value = cfg.fill; syncModeUI();
+    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; $('team').checked = cfg.team !== false; $('botSkill').value = cfg.botSkill; $('fill').value = cfg.fill; syncModeUI();
     $('rounds').innerHTML = [4, 8, 12].map(n => `<option>${n}</option>`).join(''); $('rounds').value = cfg.rounds;
     $('pool').innerHTML = Object.entries(MINIGAMES).map(([k, g]) => `<label><input type="checkbox" data-mg="${k}"${cfg.off.includes(k) ? '' : ' checked'}> ${esc(g.name)}</label>`).join('');
     $('settings').onchange = e => {
@@ -196,7 +197,7 @@ function enter(code) {
       else if (e.target.id === 'repeats') cfg.repeats = e.target.checked;
       else if (e.target.id === 'boardSel') cfg.board = e.target.value;
       else if (e.target.id === 'rounds') cfg.rounds = +e.target.value;
-      else if (e.target.id === 'coop') cfg.coop = e.target.checked;
+      else if (e.target.id === 'team') cfg.team = e.target.checked;
       else if (e.target.id === 'botSkill') cfg.botSkill = e.target.value;
       else if (e.target.id === 'fill') cfg.fill = +e.target.value;
       else if (e.target.dataset.mg) { const k = e.target.dataset.mg; cfg.off = cfg.off.filter(x => x !== k); if (!e.target.checked) cfg.off.push(k); }
@@ -262,7 +263,16 @@ net.on('queued', () => toast('A minigame is in progress — you\'ll join when it
 net.on('closed', () => alert('Host disconnected'));
 // ---- client-side
 net.on('lobby', d => setPlayers(d));
-net.on('snap', d => { if (!net.isHost && !board.active && !mg && !podium) for (const id in d) world.set(id, d[id][0], d[id][1]); });
+net.on('snap', d => { if (!net.isHost && !board.active && !mg && !podium) applySnap(world, d); });
+// ---- lobby shoving (left click / F): hands do a shove motion, knocked players tumble, can fall off the island and drop back from the sky
+const canPush = () => me && !board.active && !mg && !podium;
+function showPush(d) { pushFx(world, players[d.id], d.id, d.dx, d.dz); sfx(d.hit?.length ? 'hit' : 'click'); for (const h of d.hit || []) burstAt(h, '#ffffff', 10); }
+function hostPush(id) { if (!canPush() || !sim[id]) return; const r = doPush(sim, id); if (!r) return; const d = { id, dx: +r.dx.toFixed(2), dz: +r.dz.toFixed(2), hit: r.hit }; net.broadcast('pushfx', d); showPush(d); }
+function tryPush() { if (!canPush()) return; net.isHost ? hostPush('host') : net.send('push'); }
+net.on('push', (_, from) => { if (net.isHost) hostPush(from); });
+net.on('pushfx', d => { if (!net.isHost && canPush()) showPush(d); });
+addEventListener('pointerdown', e => { if (e.button === 0 && e.target === world.r?.domElement) tryPush(); });
+addEventListener('keydown', e => { if (e.code === 'KeyF' && !e.repeat && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) tryPush(); });
 
 // ---- minigames
 function startRandomMg(key) {
@@ -318,18 +328,11 @@ function loop(t) {
     if (net.isHost) {
       if (!board.active && !mg && !podium) {
         sim.host.ix = i.x; sim.host.iz = i.z;
-        for (const id in sim) {
-          const s = sim[id]; s.x += s.ix * 7 * dt; s.z += s.iz * 7 * dt;
-          const r = Math.hypot(s.x, s.z); if (r > 12) { s.x *= 12 / r; s.z *= 12 / r; }
-          world.set(id, s.x, s.z);
-        }
-        if ((acc += dt) >= .05) {
-          acc = 0; const snap = {};
-          for (const id in sim) snap[id] = [+sim[id].x.toFixed(2), +sim[id].z.toFixed(2)];
-          net.broadcast('snap', snap);
-        }
-      }
+        const snap = stepLobby(sim, world, dt);
+        if ((acc += dt) >= .05) { acc = 0; net.broadcast('snap', snap); }
+      } else clearRag(world, sim);
     } else {
+      if (board.active || mg || podium) clearRag(world);
       const k = i.x + ',' + i.z;
       if (k !== lastIn) { lastIn = k; net.send('input', i); }
     }

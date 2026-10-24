@@ -7,6 +7,7 @@ import { stage, fitDist } from './stage.js';
 // slides toward the winner, and when the rope is decided the losing team gets dragged into the mud.
 const SHIFT = 4;   // how far the teams slide at r = +-1
 export default {
+  team: true,
   name: 'Tug of War', desc: 'Two teams! Mash SPACE (or click) to pull the rope to your side.',
   create(ctx) {
     const ids = Object.keys(ctx.players), host = ctx.isHost, team = teams(ctx), size = [0, 1].map(t => ids.filter(id => team(id) === t).length);   // teams() first: it uses the shared rng

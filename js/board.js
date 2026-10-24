@@ -29,6 +29,13 @@ export class Board {
       else if (b.dataset.a) o.net.isHost ? this.act('host', { a: b.dataset.a, k: b.dataset.k }) : o.net.send('act', { a: b.dataset.a, k: b.dataset.k });
     };
   }
+  // ---- robustness: a cosmetic exception must never freeze the turn flow or stop the HUD from drawing
+  later(f, ms) { setTimeout(() => { try { f(); } catch (e) { this.fail('turn', e); } }, ms); }
+  safe(tag, f) { try { return f(); } catch (e) { this.fail(tag, e); } }
+  fail(tag, e) {
+    console.error('[board ' + tag + ']', e); this.o.onError?.(tag + ': ' + (e?.message || e));
+    if (tag === 'turn' && this.active && this.o.net.isHost) { try { this.nextTurn(); } catch (e2) { console.error(e2); } }     // a broken turn is skipped instead of hanging the game
+  }
   // ---- both sides
   tryRoll() {
     const { net } = this.o, s = this.s;
@@ -39,14 +46,13 @@ export class Board {
     if (d.off) return this.teardown();
     if (d.board) setBoard(d.board);
     const pv = this.prev; this.s = d;
-    if (!this.active) { this.active = true; this.build(); }
-    if (!(this.o.world.stageUp > 0)) for (const id of d.order) this.o.world.set(id, ...this.place(id));      // (a minigame stage owns the players' positions while it's up)
-    { const [sx, sz] = B.spot(d.star); this.star.position.x = sx; this.star.position.z = sz; this.starY = B.y(d.star); }
-    if (d.mon >= 0 && this.mon) this.monT = [...B.spot(d.mon), B.y(d.mon)];
+    if (!this.active) { this.active = true; this.safe('build', () => this.build()); }
+    this.safe('place', () => { if (!(this.o.world.stageUp > 0)) for (const id of d.order) this.o.world.set(id, ...this.place(id)); });      // (a minigame stage owns the players' positions while it's up)
+    this.safe('star', () => { const [sx, sz] = B.spot(d.star); this.star.position.x = sx; this.star.position.z = sz; this.starY = B.y(d.star); if (d.mon >= 0 && this.mon) this.monT = [...B.spot(d.mon), B.y(d.mon)]; });
     this.hot = d.hot || [];
-    this.o.world.setSky(B.sky ? (B.skyFixed ?? (Math.min(d.round, d.rounds) - 1) / Math.max(1, d.rounds - 1)) : null);
-    if (pv) this.diff(pv, d); this.prev = JSON.parse(JSON.stringify(d));
-    this.render(); this.o.onChange();
+    this.safe('sky', () => this.o.world.setSky(B.sky ? (B.skyFixed ?? (Math.min(d.round, d.rounds) - 1) / Math.max(1, d.rounds - 1)) : null));
+    if (pv) this.safe('fx', () => this.diff(pv, d)); this.prev = JSON.parse(JSON.stringify(d));
+    this.safe('hud', () => this.render()); this.safe('change', () => this.o.onChange());
   }
   diff(a, b) {
     const f = this.o.fx; if (!f) return;
@@ -157,12 +163,12 @@ export class Board {
       `<div>${s.log}</div>` + (s.phase === 'end' ? `<h3>🏆 ${nm(s.winner)} wins!</h3>` : '') + act;
   }
   // ---- host only
-  push() { this.apply(this.s); this.o.net.broadcast('board', this.s); this.botTurn(); }
+  push() { this.apply(this.s); this.o.net.broadcast('board', this.s); this.safe('bot', () => this.botTurn()); }
   botTurn() {
     const s = this.s, id = s?.order[s.turn]; if (!this.active || !this.o.players()[id]?.bot) return;
-    if (s.phase === 'roll') setTimeout(() => this.roll(id), 900); else if (s.phase === 'shop') setTimeout(() => this.act(id, { a: 'leave' }), 700);
-    else if (s.phase === 'slot') setTimeout(() => this.act(id, s.coins[id] >= 15 ? { a: 'bet', k: 3 } : { a: 'leave' }), 800);
-    else if (s.phase === 'choose') { const o = s.opts; setTimeout(() => this.act(id, { a: 'go', k: o[rand(o.length)] }), 700); }
+    if (s.phase === 'roll') this.later(() => this.roll(id), 900); else if (s.phase === 'shop') this.later(() => this.act(id, { a: 'leave' }), 700);
+    else if (s.phase === 'slot') this.later(() => this.act(id, s.coins[id] >= 15 ? { a: 'bet', k: 3 } : { a: 'leave' }), 800);
+    else if (s.phase === 'choose') { const o = s.opts; this.later(() => this.act(id, { a: 'go', k: o[rand(o.length)] }), 700); }
   }
   start(rounds, board = 'grove') {
     setBoard(board); const ps = this.o.players(), order = Object.keys(ps), s = { board, rounds, round: 1, turn: 0, order, pos: {}, coins: {}, stars: {}, items: {}, next: {}, phase: 'roll', star: B.starSpots[rand(B.starSpots.length)], mon: B.monster ? B.monster.start : -1, hot: [], log: 'Game start!' };
@@ -176,11 +182,11 @@ export class Board {
     const m = s.next[id]; s.next[id] = null;
     let left = m === 'big' ? 4 + rand(5) : m === 'dbl' ? 2 + rand(6) + rand(6) : 1 + rand(6);
     s.roll = left; s.phase = 'moving'; s.log = `${this.name(id)} rolled ${left}!`; this.push();
-    setTimeout(() => this.walk(id, left), 500);
+    this.later(() => this.walk(id, left), 500);
   }
   walk(id, left) {       // advance one space at a time; forks pause for a choice
     const s = this.s; if (!this.active) return;
-    if (left <= 0) return void setTimeout(() => this.land(id), 450);
+    if (left <= 0) return void this.later(() => this.land(id), 450);
     const nx = B.sp[s.pos[id]].next;
     if (nx.length > 1) { s.phase = 'choose'; s.opts = nx; s.left = left; s.log = `${this.name(id)} reached a fork!`; return this.push(); }
     this.stepTo(id, nx[0], left);
@@ -189,7 +195,7 @@ export class Board {
     const s = this.s, me = this.name(id); s.pos[id] = to;
     if (B.type(to) === 'toll') { const n = Math.min(3, s.coins[id]); s.coins[id] -= n; s.log = `${me} paid the bridge toll: -${n} 🪙`; }
     if (to === s.star && s.coins[id] >= 20) { s.coins[id] -= 20; s.stars[id]++; s.star = this.newStar(to); s.log = `${me} bought a ⭐!`; }
-    this.push(); setTimeout(() => this.walk(id, left - 1), 400);
+    this.push(); this.later(() => this.walk(id, left - 1), 400);
   }
   newStar(cur) { const l = B.starSpots.filter(i => i !== cur); return l[rand(l.length)]; }
   ahead(p, n) { while (n-- > 0) p = B.sp[p].next[0]; return p; }
@@ -280,7 +286,7 @@ export class Board {
   }
   endRound() {
     const s = this.s; s.turn = 0; s.phase = 'minigame'; s.mega = s.round % 4 === 0 || s.round === s.rounds; const w = this.wander() + this.heat(); s.log = w + (s.mega ? '⭐ MEGA MINIGAME! The winner earns a star!' : 'Minigame time!'); this.push();
-    setTimeout(() => { if (this.active) this.o.playMg(); }, 2000);
+    this.later(() => { if (this.active) this.o.playMg(); }, 2000);
   }
   reward(i) { return this.s?.mega ? [20, 12, 6, 2][i] ?? 0 : REWARD[i] ?? 0; }
   addPlayer(id) {   // late join (host only): slots in at the end of the turn order with the average coin count
@@ -302,7 +308,7 @@ export class Board {
   onMgEnd(pl, rk = pl.map((_, i) => i)) {
     if (!this.active || !this.o.net.isHost) return; const s = this.s;
     pl.forEach((id, i) => { if (id in s.coins) { s.coins[id] += this.reward(rk[i]); if (s.mega && rk[i] === 0) s.stars[id]++; } });
-    setTimeout(() => {
+    this.later(() => {
       if (!this.active) return;
       s.round++; s.mega = false; s.log = 'Minigame rewards paid!';
       if (s.round > s.rounds) {

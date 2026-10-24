@@ -9,6 +9,7 @@ import { stage, fitDist } from './stage.js';
 const LAP = 30, X0 = -16, X1 = 16, LZ = [-1.6, 1.6];       // presses per lap, track start/end, lane z for red / blue
 const trackX = f => X0 + (X1 - X0) * f;
 export default {
+  team: true,
   name: 'Relay Race', desc: `TEAM GAME! Only your team's current runner mashes SPACE (or click). ${LAP} presses per lap, then your teammate runs. First team done wins.`,
   create(ctx) {
     const ids = Object.keys(ctx.players), host = ctx.isHost, team = teams(ctx), roster = [0, 1].map(t => ids.filter(id => team(id) === t));

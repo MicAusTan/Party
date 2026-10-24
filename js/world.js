@@ -66,12 +66,13 @@ export class World {
     for (const id of [...this.m.keys()]) if (!players[id]) { this.scene.remove(this.m.get(id).g); this.m.delete(id); }
     for (const id in players) {
       const p = players[id], sig = [p.color, p.accent, p.hat, p.body, p.face, p.name].join('|'), e = this.m.get(id);
-      if (e && e.sig === sig) continue;
+      if (e && e.sig === sig) { e.trail = p.trail || 'none'; continue; }      // (trail isn't part of the look signature: update it in place)
       if (e) this.scene.remove(e.g);
       this.add(p); const n = this.m.get(id); n.sig = sig;
       n.trail = p.trail || 'none'; if (e) { n.g.position.copy(e.g.position); n.tx = e.tx; n.tz = e.tz; }
     }
   }
+  rag(id, o) { const e = this.m.get(id); if (!e) return; if (o) { e.rag = o; if (!e.ragOn) { e.ragOn = true; e.hop = false; } } else if (e.rag) { e.rag = null; e.ragOn = false; this.resetPose(id); e.g.position.y = e.by || 0; } }   // ragdoll: o = { y, rx, rz } (tumble); null = stand up
   burst(x, y, z, color, n = 14) {
     this.pg ??= new THREE.BoxGeometry(.18, .18, .18);
     for (let i = 0; i < n; i++) {
@@ -169,6 +170,7 @@ export class World {
       if (q.life <= 0) { this.scene.remove(q.m); q.m.material.dispose(); this.parts.splice(i, 1); }
     }
     for (const e of this.m.values()) {
+      if (e.rag) { const kk = Math.min(1, dt * 20); e.g.position.x += (e.tx - e.g.position.x) * kk; e.g.position.z += (e.tz - e.g.position.z) * kk; e.g.position.y += (e.rag.y - e.g.position.y) * kk; e.g.rotation.x += (e.rag.rx - e.g.rotation.x) * kk; e.g.rotation.z += (e.rag.rz - e.g.rotation.z) * kk; continue; }
       const dx = e.tx - e.g.position.x, dz = e.tz - e.g.position.z, k = Math.min(1, dt * 15);
       const mv = Math.hypot(dx, dz) > .02; if (mv) e.g.rotation.y = Math.atan2(dx, dz); e.g.rotation.z = mv ? Math.sin(this.t * 16) * .12 : e.g.rotation.z * .8;
       e.g.position.x += dx * k; e.g.position.z += dz * k;

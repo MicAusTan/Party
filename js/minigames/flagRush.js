@@ -9,6 +9,7 @@ import { teams } from './util.js';
 // Touching an enemy carrier sends the flag back to the center and stuns them. First to 3 captures.
 const BASE = [{ x: -9, z: 0 }, { x: 9, z: 0 }];
 export default {
+  team: true,
   name: 'Flag Rush', desc: 'TEAM GAME! Grab the center flag and carry it to your base (🔴 left / 🔵 right). Touch an enemy carrier to knock the flag loose. First to 3! WASD to move.',
   create(ctx) {
     const team = teams(ctx), W = ctx.world, A = arena(ctx, { set: { ...topDown(W, 17, 22), sky: 0x9fd8ff, fog: { color: 0x9fd8ff, near: 55, far: 125 }, light: 1.15, sun: { intensity: 1.2, pos: [-6, 16, 8] } } }), { ids, st, S } = A, host = ctx.isHost;
