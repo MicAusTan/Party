@@ -26,6 +26,7 @@ export class Board {
     document.getElementById('board').onclick = e => {
       const b = e.target.closest('button'); if (!b || b.disabled) return;
       if (b.id === 'roll') this.tryRoll();
+      else if (b.dataset.a === 'force') { if (o.net.isHost) this.force(); }
       else if (b.dataset.a) o.net.isHost ? this.act('host', { a: b.dataset.a, k: b.dataset.k }) : o.net.send('act', { a: b.dataset.a, k: b.dataset.k });
     };
   }
@@ -35,6 +36,19 @@ export class Board {
   fail(tag, e) {
     console.error('[board ' + tag + ']', e); this.o.onError?.(tag + ': ' + (e?.message || e));
     if (tag === 'turn' && this.active && this.o.net.isHost) { try { this.nextTurn(); } catch (e2) { console.error(e2); } }     // a broken turn is skipped instead of hanging the game
+  }
+  // ---- turn timer (every client shows it, the host enforces it) + host override
+  clock(dt) {
+    if (this.tl == null || !this.active || this.o.world.stageUp > 0) return;
+    this.tl -= dt;
+    const el = document.getElementById('board'), sp = el?.querySelector?.('#tl'); if (sp) sp.textContent = Math.max(0, Math.ceil(this.tl));
+    if (this.tl <= 0) { this.tl = null; if (this.o.net.isHost) this.safe('force', () => this.force()); }
+  }
+  force() {              // host: do the default action for whoever is up (roll / random path / leave the shop)
+    const s = this.s, id = s?.order[s.turn]; if (!this.active || !this.o.net.isHost || !id) return;
+    if (s.phase === 'roll') this.roll(id);
+    else if (s.phase === 'choose') this.act(id, { a: 'go', k: s.opts[rand(s.opts.length)] });
+    else if (s.phase === 'shop' || s.phase === 'slot') this.act(id, { a: 'leave' });
   }
   // ---- both sides
   tryRoll() {
@@ -52,6 +66,7 @@ export class Board {
     this.hot = d.hot || [];
     this.safe('sky', () => this.o.world.setSky(B.sky ? (B.skyFixed ?? (Math.min(d.round, d.rounds) - 1) / Math.max(1, d.rounds - 1)) : null));
     if (pv) this.safe('fx', () => this.diff(pv, d)); this.prev = JSON.parse(JSON.stringify(d));
+    { const live = ['roll', 'choose', 'shop', 'slot'].includes(d.phase) && d.limit && !this.o.players()[d.order[d.turn]]?.bot; this.tl = live ? d.limit : null; }
     this.safe('hud', () => this.render()); this.safe('change', () => this.o.onChange());
   }
   diff(a, b) {
@@ -134,6 +149,7 @@ export class Board {
   }
   // Camera: follows whoever is acting (zooming out at forks to show every way), and shows the whole map between rounds / when V is held on.
   camStep(dt) {
+    this.clock(dt);
     const W = this.o.world, s = this.s; if (!s || !B || W.stageUp > 0) return;
     const tn = Math.tan(W.cam.fov * Math.PI / 360), asp = W.cam.aspect || 16 / 9, b = B.bounds;
     const overview = () => { const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, d = Math.max((b.x1 - b.x0) / 2 / (tn * asp), (b.z1 - b.z0) / 2 * .85 / tn) * 1.05; return [[cx, d * .8, cz + d * .6], [cx, 0, cz]]; };
@@ -158,7 +174,8 @@ export class Board {
     if (mine && s.phase === 'shop') act = '<b>🛒 Shop</b>' + (s.stock || []).map(k => { const t = ITEMS[k]; return `<button data-a="buy" data-k="${k}"${coins < t.c || inv.length >= MAXI ? ' disabled' : ''}>${t.e} ${t.n} (${t.c}🪙)<br><small>${t.d}</small></button>`; }).join('') + '<button data-a="leave">Leave shop</button>';
     if (mine && s.phase === 'slot') act = '<b>🎰 Slot machine</b>' + [3, 6, 10].map(b => `<button data-a="bet" data-k="${b}"${coins < b ? ' disabled' : ''}>Bet ${b} 🪙</button>`).join('') + '<button data-a="leave">Walk away</button>';
     if (mine && s.phase === 'choose') act = '<b>🔀 Choose your path</b>' + s.opts.map(k => `<button data-a="go" data-k="${k}">${B.sp[k].label || 'Go this way'}</button>`).join('');
-    el.innerHTML = `<b>${B.name} · Round ${Math.min(s.round, s.rounds)} / ${s.rounds}</b> <small style="opacity:.7">[V] ${this.mapView ? 'follow player' : 'map view'}</small>` +
+    if (this.o.net.isHost && !mine && ['roll', 'choose', 'shop', 'slot'].includes(s.phase) && !ps[cur]?.bot) act = `<button data-a="force">⏩ ${s.phase === 'roll' ? 'Roll for' : 'Skip'} ${nm(cur)}</button>`;     // host override: nobody has to wait for an AFK player
+    el.innerHTML = `<b>${B.name} · Round ${Math.min(s.round, s.rounds)} / ${s.rounds}</b> <small style="opacity:.7">[V] ${this.mapView ? 'follow player' : 'map view'}</small>` + (this.tl != null ? ` <b>⏱ <span id="tl">${Math.max(0, Math.ceil(this.tl))}</span>s</b>` : '') +
       s.order.map(id => `<div style="color:${ps[id]?.color}">${id === cur && (s.phase === 'roll' || s.phase === 'shop' || s.phase === 'choose' || s.phase === 'slot') ? '▶ ' : ''}${nm(id)} 🪙${s.coins[id]} ⭐${s.stars[id]} ${(s.items[id] || []).map(k => ITEMS[k].e).join('')}</div>`).join('') +
       `<div>${s.log}</div>` + (s.phase === 'end' ? `<h3>🏆 ${nm(s.winner)} wins!</h3>` : '') + act;
   }
@@ -170,8 +187,8 @@ export class Board {
     else if (s.phase === 'slot') this.later(() => this.act(id, s.coins[id] >= 15 ? { a: 'bet', k: 3 } : { a: 'leave' }), 800);
     else if (s.phase === 'choose') { const o = s.opts; this.later(() => this.act(id, { a: 'go', k: o[rand(o.length)] }), 700); }
   }
-  start(rounds, board = 'grove') {
-    setBoard(board); const ps = this.o.players(), order = Object.keys(ps), s = { board, rounds, round: 1, turn: 0, order, pos: {}, coins: {}, stars: {}, items: {}, next: {}, phase: 'roll', star: B.starSpots[rand(B.starSpots.length)], mon: B.monster ? B.monster.start : -1, hot: [], log: 'Game start!' };
+  start(rounds, board = 'grove', limit = 0) {
+    setBoard(board); const ps = this.o.players(), order = Object.keys(ps), s = { board, rounds, limit: +limit || 0, round: 1, turn: 0, order, pos: {}, coins: {}, stars: {}, items: {}, next: {}, phase: 'roll', star: B.starSpots[rand(B.starSpots.length)], mon: B.monster ? B.monster.start : -1, hot: [], log: 'Game start!' };
     order.forEach(id => { s.pos[id] = 0; s.coins[id] = 10; s.stars[id] = 0; s.items[id] = []; s.next[id] = null; });
     this.s = s; this.push();
   }

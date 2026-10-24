@@ -7,14 +7,14 @@ import { sfx, toggleMute, isMuted } from './sfx.js';
 import { MINIGAMES } from './minigames/registry.js';
 import { EMOTES, playEmote } from './emotes.js';
 import { showPodium } from './victory.js';
-import { COLORS, ACCENTS, OPTS, DEFAULT_LOOK, cleanLook } from './look.js';
+import { COLORS, ACCENTS, OPTS, DEFAULT_LOOK, cleanLook, randomLook } from './look.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const net = new Net(), world = new World($('c'));
 const board = new Board({ net, world, esc, players: () => players, playMg: startRandomMg, onChange: () => lock(), fx: (t, a) => fx(t, a), onError: m => toast('⚠ ' + m + ' (please screenshot this!)', 8000) });
 let players = {}, me = null, mg = null, look = { ...DEFAULT_LOOK };
-const sim = {}, keys = {}; let cfg = { mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false, team: true, botSkill: 'normal', fill: 0 };   // sim: host-only free-roam positions
+const sim = {}, keys = {}; let cfg = { mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false, team: true, botSkill: 'mixed', fill: 0, turnT: 30 };   // sim: host-only free-roam positions
 
 try { cfg = { ...cfg, ...JSON.parse(localStorage.getItem('pg-cfg') || '{}') }; } catch {}
 try { look = { ...look, ...JSON.parse(localStorage.getItem('pg-look') || '{}') }; $('name').value = localStorage.getItem('pg-name') || ''; } catch {}
@@ -71,6 +71,7 @@ function lock() {
   $('start').hidden = $('settingsBtn').hidden = !lobby;
   $('start').textContent = cfg.mode === 'party' ? '▶ Start minigame party' : '▶ Start board game'; $('start').disabled = n < need; $('startHint').hidden = !lobby || n >= need;
   $('startHint').textContent = `Waiting for players (${n}/${need} needed). Share the room code!`;
+  $('leaveBtn').hidden = !(net.isHost || net.hostConn) || practice; $('botRow').hidden = !(host && lobby && !practice);
   $('stopMg').hidden = !inMg; $('endGame').hidden = !(inGame && (!inMg || !!partyState)); renderParty();
   $('practice').hidden = !practice; $('testRow').hidden = !lobby; emoSync();
 }
@@ -133,7 +134,7 @@ function startGame() {
   if (!net.isHost || mg || board.active || partyState) return;
   fillBots(); if (Object.keys(players).length < (practice ? 1 : 2)) return;
   if (cfg.mode === 'party') return startParty();
-  board.start(cfg.rounds, cfg.board === 'random' ? Object.keys(BOARDS)[Math.random() * Object.keys(BOARDS).length | 0] : cfg.board);
+  board.start(cfg.rounds, cfg.board === 'random' ? Object.keys(BOARDS)[Math.random() * Object.keys(BOARDS).length | 0] : cfg.board, cfg.turnT);
 }
 const saveCfg = () => { try { localStorage.setItem('pg-cfg', JSON.stringify(cfg)); } catch {} };
 function syncModeUI() {
@@ -183,13 +184,14 @@ function enter(code) {
   $('menu').hidden = true; $('panel').hidden = false; $('room').textContent = code; lookOpen = false; folded = false;
   if (net.isHost) {
     $('start').onclick = startGame;
-    $('stopMg').onclick = () => mg?.finish?.([]);
-    $('endGame').onclick = () => { if (confirm('End the game for everyone and go back to the lobby?')) { endPodium(); if (partyState) stopParty(); else board.quit(); } };
+    $('stopMg').onclick = async () => { if (await ask('Skip this minigame?', 'Nobody gets points for it and the game moves on.', 'Skip it')) mg?.finish?.([]); };
+    $('endGame').onclick = async () => { if (await ask('End the game?', 'This ends the game for everyone and sends you all back to the lobby.', 'End game')) { endPodium(); if (partyState) stopParty(); else board.quit(); } };
+    $('botRow').onclick = e => { const b = e.target.dataset.b; if (b === 'add') addDummy(); else if (b === 'rem') removeDummy(); };
     $('settingsBtn').onclick = () => $('settings').hidden = false;
     $('settingsClose').onclick = () => $('settings').hidden = true;
     $('boardSel').innerHTML = Object.entries(BOARDS).map(([k, b]) => `<option value="${k}">${b.name}</option>`).join('') + '<option value="random">🎲 Random board</option>';
-    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; $('team').checked = cfg.team !== false; $('botSkill').value = cfg.botSkill; $('fill').value = cfg.fill; syncModeUI();
-    $('rounds').innerHTML = [4, 8, 12].map(n => `<option>${n}</option>`).join(''); $('rounds').value = cfg.rounds;
+    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; $('team').checked = cfg.team !== false; $('botSkill').value = cfg.botSkill; $('turnT').value = cfg.turnT; $('fill').value = cfg.fill; syncModeUI();
+    $('rounds').innerHTML = [[4, 10], [8, 20], [12, 30], [16, 40], [20, 50], [30, 75]].map(([n, m]) => `<option value="${n}">${n} rounds (~${m} min)</option>`).join(''); $('rounds').value = cfg.rounds;
     $('pool').innerHTML = Object.entries(MINIGAMES).map(([k, g]) => `<label><input type="checkbox" data-mg="${k}"${cfg.off.includes(k) ? '' : ' checked'}> ${esc(g.name)}</label>`).join('');
     $('settings').onchange = e => {
       if (e.target.id === 'modeSel') cfg.mode = e.target.value;
@@ -197,6 +199,7 @@ function enter(code) {
       else if (e.target.id === 'repeats') cfg.repeats = e.target.checked;
       else if (e.target.id === 'boardSel') cfg.board = e.target.value;
       else if (e.target.id === 'rounds') cfg.rounds = +e.target.value;
+      else if (e.target.id === 'turnT') cfg.turnT = +e.target.value;
       else if (e.target.id === 'team') cfg.team = e.target.checked;
       else if (e.target.id === 'botSkill') cfg.botSkill = e.target.value;
       else if (e.target.id === 'fill') cfg.fill = +e.target.value;
@@ -219,14 +222,16 @@ $('solo').onclick = () => {
 };
 function addDummy(fill) {
   const n = Object.keys(players).length; if (n >= 8) return; const id = 'bot' + (++botN);
-  players[id] = { id, name: 'Bot ' + botN, fill: !!fill, ...mkLook({ color: COLORS[n % COLORS.length] }, id), bot: true };
+  const free = COLORS.filter(c => !taken(c, id));
+  players[id] = { id, name: 'Bot ' + botN, fill: !!fill, ...mkLook({ ...randomLook(), color: free[Math.random() * free.length | 0] ?? COLORS[n % COLORS.length] }, id), bot: true };
   sim[id] = { x: (n % 5) * 2 - 4, z: 2, ix: 0, iz: 0 }; if (partyState) players[id].score = 0; pushLobby(); if (board.active) board.addPlayer(id);
 }
 function removeDummy() {
   const id = Object.keys(players).reverse().find(k => players[k].bot); if (!id) return;
   delete players[id]; delete sim[id]; board.onLeave(id); pushLobby();
 }
-$('practice').onclick = e => { const p = e.target.dataset.p; if (p === 'add') addDummy(); else if (p === 'rem') removeDummy(); else if (p === 'exit') location.reload(); };
+$('practice').onclick = e => { const p = e.target.dataset.p; if (p === 'add') addDummy(); else if (p === 'rem') removeDummy(); else if (p === 'exit') ask('Exit practice?', 'You will leave practice mode.', 'Exit').then(y => y && location.reload()); };
+$('leaveBtn').onclick = async () => { if (await ask('Leave the game?', net.isHost ? 'You are the host: everyone will be disconnected.' : 'You will disconnect from the room.', 'Leave')) { try { net.hostConn?.close(); net.peer?.destroy(); } catch {} location.reload(); } };
 
 $('host').onclick = async () => {
   try {
@@ -264,6 +269,15 @@ net.on('closed', () => alert('Host disconnected'));
 // ---- client-side
 net.on('lobby', d => setPlayers(d));
 net.on('snap', d => { if (!net.isHost && !board.active && !mg && !podium) applySnap(world, d); });
+// ---- confirmation dialog (promise-based): `if (await ask('Title', 'Explain', 'Do it')) ...`
+function ask(title, text, yes = 'Yes') {
+  return new Promise(res => {
+    const el = $('confirm'); $('cfTitle').textContent = title; $('cfText').textContent = text; $('cfYes').textContent = yes; el.hidden = false;
+    const done = v => { el.hidden = true; $('cfYes').onclick = $('cfNo').onclick = el.onclick = null; removeEventListener('keydown', kd); res(v); };
+    const kd = e => { if (e.code === 'Escape') done(false); else if (e.code === 'Enter') done(true); };
+    addEventListener('keydown', kd); $('cfYes').onclick = () => done(true); $('cfNo').onclick = () => done(false); el.onclick = e => { if (e.target === el) done(false); }; $('cfNo').focus();
+  });
+}
 // ---- lobby shoving (left click / F): hands do a shove motion, knocked players tumble, can fall off the island and drop back from the sky
 const canPush = () => me && !board.active && !mg && !podium;
 function showPush(d) { pushFx(world, players[d.id], d.id, d.dx, d.dz); sfx(d.hit?.length ? 'hit' : 'click'); for (const h of d.hit || []) burstAt(h, '#ffffff', 10); }
@@ -282,8 +296,14 @@ function startRandomMg(key) {
   net.broadcast('mg:start', { key, seed }); startMg(key, seed);
 }
 // Bot skill 0..1 (host's setting + a stable per-bot wobble so bots differ). Host-only; never use ctx.rng for bots.
-const SKILL = { easy: .25, normal: .5, hard: .8 }, skJit = {};
-const botSkill = id => Math.max(.05, Math.min(.98, (SKILL[cfg.botSkill] ?? .5) + (skJit[id] ??= (Math.random() - .5) * .3)));
+// Every bot has its own talent (stable for the whole session) and a specialty per minigame (stable hash of bot + game), so some bots are
+// great at one game and bad at another. 'Mixed' spreads the talents wide; the other levels shift everybody up or down.
+const SKILL = { easy: .3, normal: .5, hard: .75, mixed: .5 }, skTal = {}, skSpec = {};
+const hash01 = str => { let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return ((h >>> 0) % 1000) / 1000; };
+const botSkill = id => {
+  const k = id + '|' + (mg?.key ?? ''), tal = skTal[id] ??= (Math.random() - .5) * (cfg.botSkill === 'mixed' ? .7 : .4), spec = skSpec[k] ??= (hash01(k) - .5) * .5;
+  return Math.max(.05, Math.min(.97, (SKILL[cfg.botSkill] ?? .5) + tal + spec));
+};
 function startMg(key, seed) {
   endPodium(); const def = MINIGAMES[key]; $('hud').innerHTML = ''; mg = { key, inst: null }; lock();
   const ctx = {

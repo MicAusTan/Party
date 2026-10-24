@@ -16,3 +16,10 @@ export function cleanLook(l = {}) {
   for (const k in OPTS) o[k] = l[k] in OPTS[k].vals ? l[k] : DEFAULT_LOOK[k];
   return o;
 }
+
+// A random look (everything but the trail, which stays off) -- used for bots.
+export function randomLook() {
+  const pick = a => a[Math.random() * a.length | 0], o = { accent: pick(ACCENTS) };
+  for (const k in OPTS) o[k] = k === 'trail' ? 'none' : pick(Object.keys(OPTS[k].vals));
+  return o;
+}
