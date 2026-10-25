@@ -47,13 +47,14 @@ export default {
     addEventListener('pointerdown', onDown);
     return {
       update(dt) {
-        sb.tick(dt); time += dt;
+        sb.prog(hits), sb.tick(dt); time += dt;
         if (!done) {
           if ((life -= dt) <= 0) { i++; life = LIFE; born = time; }
           if (time >= 15) { done = true; sb.report(hits); W.emote(me, 'cheer'); }
         }
         s.textContent = done ? `Hits: ${hits} - waiting for others...` : `${Math.ceil(15 - time)}s   Hits: ${hits}`;
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) { if (net.handle(m, from)) return; sb.onMessage(m, from); },
       cleanup() { removeEventListener('pointerdown', onDown); el.remove(); S.cleanup(); },
     };

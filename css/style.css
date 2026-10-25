@@ -36,7 +36,7 @@ button.ghost{background:#fff2;color:#fff;font-weight:600}
 #panel.compact{padding:8px 12px;width:auto;min-width:150px}
 #panel.folded #body{display:none}
 #settings,#confirm{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;z-index:10}#confirm{z-index:20}#confirm[hidden],#settings[hidden]{display:none}
-.sbar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#000b;padding:6px 14px;border-radius:10px;font-size:13px;display:flex;gap:12px;z-index:3;pointer-events:none;flex-wrap:wrap;justify-content:center;max-width:92vw}
+.sbar{position:fixed;left:12px;bottom:12px;background:#000b;padding:8px 12px;border-radius:10px;font-size:13px;display:flex;flex-direction:column;gap:3px;z-index:3;pointer-events:none;min-width:130px}
 .sheet{position:static;width:min(460px,92vw);max-height:88vh;overflow-y:auto;box-sizing:border-box}
 .sheet h2{margin:0}.srow{display:flex;justify-content:space-between;align-items:center;gap:8px}
 #pool{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
@@ -51,3 +51,5 @@ select{padding:4px;border-radius:6px;border:0;font:inherit}
 #emotes button:hover{background:#000d;border-color:#ffd93d}
 #emoWheel{display:grid;grid-template-columns:repeat(4,46px);gap:6px;padding:8px;border-radius:14px;background:#000b}
 #emoWheel button{padding:6px 0}
+
+.tbar{position:fixed;right:12px;top:12px;background:#000b;padding:8px 12px;border-radius:10px;font-size:13px;z-index:3;pointer-events:none;max-width:240px;line-height:1.5}

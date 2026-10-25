@@ -43,7 +43,7 @@ export default {
     return {
       update(dt) {
         time += dt;
-        if (host && !over) for (let k = 0; k < N; k++) if (T0 + k * P < time) ids.forEach(id => ctx.players[id].bot && hits[k].add(id));
+        if (host && !over) for (let k = 0; k < N; k++) if (T0 + k * P < time) ids.forEach(id => { if (!ctx.players[id].bot) return; const mem = ctx._sp ??= {}, key = id + ':' + k; mem[key] ??= Math.random() < .55 + .44 * (ctx.skill?.(id) ?? .5); if (mem[key]) hits[k].add(id); });
         if (host && !over) {
           ok = evalOk(); if ((acc += dt) > .3) { acc = 0; ctx.send({ ok }); }
           if (time > T0 + N * P + .8) { over = true; const c = [...ok].filter(x => x === '1').length; const rk = c >= 20 ? 0 : c >= 14 ? 1 : c >= 8 ? 2 : 3; ctx.send({ ok, end: 1 }); end(); S.after(2.4, () => ctx.finish([...ids], ids.map(() => rk))); }

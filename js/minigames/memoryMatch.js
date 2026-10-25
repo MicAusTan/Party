@@ -9,7 +9,7 @@ import { pick, share, nameplate } from './kit.js';
 export default {
   name: 'Memory Match', desc: 'Find all 8 pairs as fast as you can! Every wrong guess costs 1.5 seconds.',
   create(ctx) {
-    const sb = scoreboard(ctx, { timeout: 80, bot: s => { const T = jit(mix(62, 28, s), .15); return { v: Math.round(T * 1000), t: T }; } }), pool = ['🍎', '🍌', '🍇', '🍒', '🍋', '🥝', '🍉', '🍓', '🍑', '🍍', '🥥', '🥕', '🌽', '🍄', '🍕', '🍔', '🍩', '🍪', '🎂', '🍿', '🐶', '🐱', '🐸', '🐵', '🐧', '🦊', '🐼', '🐙', '🦋', '🐢', '🦄', '🐝', '⚽', '🏀', '🎸', '🎲', '🚀', '🚗', '⭐', '🌈', '🔥', '💎', '🎈', '🎁', '🔔', '🌻', '🌵', '🍀'];
+    const sb = scoreboard(ctx, { timeout: 80, bot: s => { const T = jit(mix(46, 22, s), .15), miss = Math.round(jit(mix(13, 3, s), .25)); return { v: Math.round((T + miss * 1.5) * 1000), t: T }; } }), pool = ['🍎', '🍌', '🍇', '🍒', '🍋', '🥝', '🍉', '🍓', '🍑', '🍍', '🥥', '🥕', '🌽', '🍄', '🍕', '🍔', '🍩', '🍪', '🎂', '🍿', '🐶', '🐱', '🐸', '🐵', '🐧', '🦊', '🐼', '🐙', '🦋', '🐢', '🦄', '🐝', '⚽', '🏀', '🎸', '🎲', '🚀', '🚗', '⭐', '🌈', '🔥', '💎', '🎈', '🎁', '🔔', '🌻', '🌵', '🍀'];
     for (let i = pool.length - 1; i > 0; i--) { const j = ctx.rng() * (i + 1) | 0; [pool[i], pool[j]] = [pool[j], pool[i]]; }   // 8 random symbols per game
     const syms = pool.slice(0, 8), deck = [...syms, ...syms];
     for (let i = deck.length - 1; i > 0; i--) { const j = ctx.rng() * (i + 1) | 0; [deck[i], deck[j]] = [deck[j], deck[i]]; }
@@ -57,10 +57,11 @@ export default {
     addEventListener('pointerdown', onDown);
     return {
       update(dt) {
-        sb.tick(dt); if (!done) time += dt;
+        sb.prog(matched.size / 16), sb.tick(dt); if (!done) time += dt;
         if (busy > 0 && (busy -= dt) <= 0) open = [];
         const t = done ? `Done! ${(time + miss * 1.5).toFixed(1)}s - waiting for others...` : `${time.toFixed(1)}s  Misses: ${miss}`; if (t !== lastT) { tl.textContent = t; lastT = t; }
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) { if (net.handle(m, from)) return; sb.onMessage(m, from); },
       cleanup() { removeEventListener('pointerdown', onDown); el.remove(); S.cleanup(); },
     };

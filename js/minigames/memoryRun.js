@@ -79,6 +79,7 @@ export default {
           const C = r => .9 * r + .4 * r * (r + 1) / 2 + r * (1 - sk * .5) * .5 * r / 2 + r * .6; b.c += dt;
           while (b.r < b.M && b.c >= C(b.r + 1)) apply(id, ++b.r, false);
           if (b.r >= b.M && b.c >= C(b.M + 1)) apply(id, b.M, true);
+          if (ids.filter(o => !ctx.players[o]?.bot).every(o => prog[o]?.out)) { if (b.r < b.M) b.r = b.M; apply(id, b.r, true); }       // all humans are out: the bots don't make anyone wait
         }
         if ((acc += dt) > .2) { acc = 0; ctx.send({ p: prog }); }
         const all = Object.keys(prog);

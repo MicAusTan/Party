@@ -47,10 +47,11 @@ export default {
     addEventListener('keydown', key);
     return {
       update(dt) {
-        sb.tick(dt); time += dt; if (!done && time >= 20) { done = true; sb.report(score); W.emote(me, 'cheer'); }
+        sb.prog(score), sb.tick(dt); time += dt; if (!done && time >= 20) { done = true; sb.report(score); W.emote(me, 'cheer'); }
         const r = rounds[i]; s.textContent = done ? `Final: ${score} - waiting for others...` : `${Math.ceil(20 - time)}s   Score: ${score}`;
         w.textContent = done ? '' : COLS[r.w][0]; w.style.color = done ? '' : COLS[r.c][1];
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) { if (net.handle(m, from)) return; sb.onMessage(m, from); },
       cleanup() { removeEventListener('keydown', key); el.remove(); S.cleanup(); },
     };

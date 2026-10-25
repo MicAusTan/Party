@@ -4,7 +4,7 @@ import { stage } from './stage.js';
 import { starfield } from './kit.js';
 // Set: neon rooftops at night. A layered skyline with lit windows behind the fighting platforms, a big moon, a glowing sign, and neon edges on every ledge.
 // Rounds-style 2.5D shooter. Host simulates (fixed 60Hz), clients send input + render snapshots.
-// First to NEED round wins. Everyone except the round winner picks one of 3 random cards.
+// First to NEED round wins. After every round everyone picks one of 3 random cards.
 const CARDS = [
   { n: 'Big Rounds', d: '+40% damage, fires slower', f: s => { s.dmg *= 1.4; s.cd *= 1.15; } },
   { n: 'Rapid Fire', d: 'Much faster fire, -15% damage', f: s => { s.cd *= .65; s.dmg *= .85; } },
@@ -16,21 +16,22 @@ const CARDS = [
   { n: 'Vampire', d: 'Heal 50% of damage dealt', f: s => { s.ls += .5; } },
   { n: 'Fast Bullets', d: '+50% bullet speed', f: s => { s.bs *= 1.5; } },
 ];
-const PL = [{ x0: -14, x1: 14, top: 0, th: 3 }, { x0: -9, x1: -3, top: 3.2, th: .4 }, { x0: 3, x1: 9, top: 3.2, th: .4 }, { x0: -3, x1: 3, top: 6.4, th: .4 }];
-const NEED = 2, MAXR = 5;
+// A wide rooftop: ground, two tiers of ledges (3.4 apart = one jump) and a small top perch.
+const PL = [{ x0: -22, x1: 22, top: 0, th: 3 }, { x0: -20, x1: -12, top: 3.4, th: .4 }, { x0: 12, x1: 20, top: 3.4, th: .4 }, { x0: -5, x1: 5, top: 3.4, th: .4 }, { x0: -13, x1: -6, top: 6.8, th: .4 }, { x0: 6, x1: 13, top: 6.8, th: .4 }, { x0: -3, x1: 3, top: 10.2, th: .4 }];
+const NEED = 3, MAXR = 5;
 
 export default {
-  emotes: false, name: 'Rounds', desc: 'First to 2 round wins. Losers pick upgrade cards! A/D move, W/Space jump, mouse aims, click shoots.',
+  emotes: false, name: 'Rounds', desc: 'First to 3 round wins (5 rounds max). After every round EVERYONE picks an upgrade card! A/D move, W/Space jump, mouse aims, click shoots.',
   create(ctx) {
     const W = ctx.world, ids = Object.keys(ctx.players), host = ctx.isHost, me = ctx.me, scene = W.scene;
-    const S = stage(ctx, { sky: 0x0b0c24, fog: { color: 0x0b0c24, near: 45, far: 110 }, light: .8, sun: { color: 0xb0c0ff, intensity: .9, pos: [4, 14, 12] }, cam: { pos: [0, 5.5, 22], look: [0, 5, 0] }, camFrom: [0, 9, 36], camT: 1.4 });
+    const S = stage(ctx, { sky: 0x0b0c24, fog: { color: 0x0b0c24, near: 45, far: 110 }, light: .8, sun: { color: 0xb0c0ff, intensity: .9, pos: [4, 14, 12] }, cam: { pos: [0, 7, 35], look: [0, 5.5, 0] }, camFrom: [0, 12, 54], camT: 1.4 });
     const objs = [], bm = [], vv = new THREE.Vector3();
     PL.forEach((p, i) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(p.x1 - p.x0, p.th, 3), new THREE.MeshStandardMaterial({ color: i ? 0x4b3f6b : 0x39405a, emissive: i ? 0x150a2a : 0x0a0d1a, flatShading: true }));
       m.position.set((p.x0 + p.x1) / 2, p.top - p.th / 2, 0); S.root.add(m); objs.push(m);
     });
     PL.forEach((p, i) => S.box(p.x1 - p.x0 + .05, .09, 3.05, i % 2 ? 0xff4dd8 : 0x4dd0e1, (p.x0 + p.x1) / 2, p.top - .05, 0, { basic: true }));               // neon ledge edges
-    S.box(28.6, 14, 3.2, 0x151832, 0, -14, 0); for (let k = 0; k < 6; k++) { S.box(1.6, 1.1, 1.2, 0x2a2f55, -11 + k * 4.4, 0, -.7); if (k % 2) { S.cyl(.05, .05, 2.4, 0x8a90b0, -11 + k * 4.4, 1.1, -.7, { seg: 4 }); S.sph(.12, 0xff3b30, -11 + k * 4.4, 3.5, -.7, { basic: true, seg: 5 }); } }   // rooftop clutter
+    S.box(44.6, 14, 3.2, 0x151832, 0, -14, 0); for (let k = 0; k < 10; k++) { S.box(1.6, 1.1, 1.2, 0x2a2f55, -19.8 + k * 4.4, 0, -.7); if (k % 2) { S.cyl(.05, .05, 2.4, 0x8a90b0, -19.8 + k * 4.4, 1.1, -.7, { seg: 4 }); S.sph(.12, 0xff3b30, -19.8 + k * 4.4, 3.5, -.7, { basic: true, seg: 5 }); } }   // rooftop clutter
     S.sph(3.4, 0xfff2c0, 22, 22, -45, { basic: true }); starfield(S, 160, 75, 8);
     const skyline = (z, w, h, y, dark, seed) => {
       const sc = S.screen(w, h, 1024, 512); sc.mesh.position.set(0, y, z); sc.mesh.material.transparent = true; let s0 = seed; const r = () => (s0 = (s0 * 16807) % 2147483647) / 2147483647;
@@ -48,7 +49,7 @@ export default {
     const st = {}; let bullets = [], freeze = 1.4, ft = 0, picked = {}, pickT = 0, over = false;
     const mk = () => ({ hp: 100, dmg: 20, cd: .4, bs: 22, speed: 1, jumps: 0, bn: 0, shots: 1, ls: 0 });
     ids.forEach(id => st[id] = { st: mk(), x: 0, y: 0, vx: 0, vy: 0, hp: 100, alive: true, cd: 0, jl: 0, gr: false, inp: { x: 0, j: 0, a: 0, f: 0 }, jprev: 0, jumpReq: false, dealt: 0 });
-    const spawn = () => ids.forEach((id, k) => { const s = st[id]; s.hp = s.st.hp; s.alive = true; s.x = -10 + 20 * (k + .5) / ids.length; s.y = 0; s.vx = s.vy = 0; s.cd = .3; s.jl = s.st.jumps; });
+    const spawn = () => ids.forEach((id, k) => { const s = st[id]; s.hp = s.st.hp; s.alive = true; s.x = -17 + 34 * (k + .5) / ids.length; s.y = 0; s.vx = s.vy = 0; s.cd = .3; s.jl = s.st.jumps; });
     spawn();
 
     // input
@@ -83,7 +84,7 @@ export default {
         over = true; ctx.send(pack());
         return ctx.finish([...ids].sort((a, b) => wins[b] - wins[a] || st[b].dealt - st[a].dealt));
       }
-      round++; const pickers = ids.filter(id => id !== w);
+      round++; const pickers = [...ids];                 // everyone picks a card after every round (winners too)
       if (!pickers.length) return startRound();
       phase = 'pick'; pickT = 14; picked = {}; offers = {};
       pickers.forEach(id => offers[id] = [...CARDS.keys()].sort(() => ctx.rng() - .5).slice(0, 3));
@@ -104,11 +105,11 @@ export default {
         let tg = null, td = 1e9; for (const o of ids) { if (o === id || !st[o].alive) continue; const d = Math.hypot(st[o].x - s.x, st[o].y - s.y); if (d < td) { td = d; tg = st[o]; } }
         if (!tg) { applyInput(id, { x: 0, j: 0, a: 0, f: 0 }); continue; }
         if ((b.t -= dt) <= 0) {
-          b.t = (.45 - .3 * sk) * (.7 + Math.random() * .6); const dx = tg.x - s.x, want = Math.abs(dx) > 9 ? Math.sign(dx) : Math.abs(dx) < 5 ? -Math.sign(dx) : (Math.random() < .5 ? 0 : Math.sign(dx) * (Math.random() < .5 ? 1 : -1));
+          b.t = (.45 - .3 * sk) * (.7 + Math.random() * .6); const dx = tg.x - s.x, want = Math.abs(dx) > 11 ? Math.sign(dx) : Math.abs(dx) < 6 ? -Math.sign(dx) : (Math.random() < .5 ? 0 : Math.sign(dx) * (Math.random() < .5 ? 1 : -1));
           b.dir = want; b.j = (tg.y - s.y > 2 || (Math.random() < .12 + .1 * sk)) ? 1 : 0; b.err = (Math.random() - .5) * (1 - sk) * .7;
           b.burst = Math.random() < .5 + .4 * sk ? .5 + Math.random() * .6 : 0;
         }
-        if (s.x > 12.2 && b.dir > 0) b.dir = -1; if (s.x < -12.2 && b.dir < 0) b.dir = 1;
+        if (s.x > 20.2 && b.dir > 0) b.dir = -1; if (s.x < -20.2 && b.dir < 0) b.dir = 1;
         b.burst -= dt;
         const a = Math.atan2(tg.y - s.y, tg.x - s.x) + b.err;
         applyInput(id, { x: b.dir, j: b.j && !s.gr ? 0 : b.j, a: +a.toFixed(2), f: b.burst > 0 ? 1 : 0 });
@@ -123,7 +124,7 @@ export default {
         const s = st[id]; if (!s.alive) continue; const i = s.inp, k = s.st;
         s.vx = i.x * 8 * k.speed;
         if (s.jumpReq) { if (s.gr) { s.vy = 17; s.jl = k.jumps; } else if (s.jl > 0) { s.vy = 15; s.jl--; } s.jumpReq = false; }
-        s.vy -= 40 * dt; const py = s.y; s.x = Math.max(-12.5, Math.min(12.5, s.x + s.vx * dt)); s.y += s.vy * dt; s.gr = false;
+        s.vy -= 40 * dt; const py = s.y; s.x = Math.max(-20.5, Math.min(20.5, s.x + s.vx * dt)); s.y += s.vy * dt; s.gr = false;
         if (s.vy <= 0) for (const p of PL) if (s.x >= p.x0 - .3 && s.x <= p.x1 + .3 && py >= p.top - .05 && s.y <= p.top) { s.y = p.top; s.vy = 0; s.gr = true; s.jl = k.jumps; }
         s.cd -= dt;
         if (i.f && s.cd <= 0) {
@@ -139,7 +140,7 @@ export default {
             if (b.bn > 0) { b.bn--; if (oy > p.top || oy < p.top - th) { b.vy = -b.vy; b.y = oy; } else { b.vx = -b.vx; b.x = ox; } } else dead = true;
           }
         }
-        if (!dead && Math.abs(b.x) > 15.5) { if (b.bn > 0) { b.bn--; b.vx = -b.vx; b.x = ox; } else dead = true; }
+        if (!dead && Math.abs(b.x) > 23.5) { if (b.bn > 0) { b.bn--; b.vx = -b.vx; b.x = ox; } else dead = true; }
         if (!dead) for (const id of ids) {
           const s = st[id]; if (!s.alive || id === b.o) continue;
           if (Math.abs(b.x - s.x) < .55 && Math.abs(b.y - (s.y + .9)) < 1) {

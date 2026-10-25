@@ -55,13 +55,14 @@ export default {
     addEventListener('keydown', key);
     return {
       update(dt) {
-        sb.tick(dt); if (!done && (t += dt) >= LEN) {
+        sb.prog(score), sb.tick(dt); if (!done && (t += dt) >= LEN) {
           if (!resolved) { const c = cmds[i]; if (!c.says) { score++; fb = '✓ good restraint'; } else { score--; fb = '✗ too slow'; } }
           i++; t = 0; resolved = false; if (i >= cmds.length) { done = true; sb.report(score); W.emote(me, 'cheer'); }
         }
         const c = cmds[Math.min(i, cmds.length - 1)];
         el.innerHTML = done ? `<h3>Final: ${score} - waiting for others...</h3>` : `<h2>${c.says ? 'Simon says:' : 'Press:'} ${AR[c.k]}</h2><div>Score ${score}   ${fb}</div>`;
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) {
         if (m.k === 'r') {
           if (ctx.isHost) { if (!(from in base)) return; const ev = { k: 'r', id: from, d: m.d & 3, ok: m.ok ? 1 : 0 }; react(from, ev.d, ev.ok); ctx.send(ev); }

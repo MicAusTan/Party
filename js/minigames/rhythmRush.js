@@ -57,11 +57,12 @@ export default {
     const apply = ev => { if (ev.id in sc) { sc[ev.id] = ev.sc; dirty[ev.id] = true; react(ev.id, ev.q); } };
     return {
       update(dt) {
-        sb.tick(dt); time += dt; fl = fl.map(v => Math.max(0, v - dt));
+        sb.prog(score), sb.tick(dt); time += dt; fl = fl.map(v => Math.max(0, v - dt));
         if (!done && time >= endT) { done = true; sb.report(score); sc[me] = score; dirty[me] = true; ctx.send({ k: 'h', id: me, q: -1, sc: score }); W.emote(me, 'cheer'); }
         if (pendQ !== null && (sendT -= dt) <= 0) { sendT = .12; ctx.send({ k: 'h', id: me, q: pendQ, sc: score }); pendQ = null; }     // at most ~8 messages/s per player
         s.textContent = done ? `Final: ${score} - waiting for others...` : `Score: ${score}   ${fb}`;
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) {
         if (m.k === 'h') {
           if (ctx.isHost) { if (!(from in sc)) return; const ev = { k: 'h', id: from, q: Math.max(-1, Math.min(2, m.q | 0)), sc: Math.max(-999, Math.min(999, m.sc | 0)) }; apply(ev); ctx.send(ev); }

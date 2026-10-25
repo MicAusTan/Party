@@ -46,9 +46,10 @@ export default {
     addEventListener('pointerdown', onDown);
     return {
       update(dt) {
-        sb.tick(dt); if (!done) time += dt;
+        sb.prog(i / rounds.length), sb.tick(dt); if (!done) time += dt;
         const t = done ? `Done! ${(time + pen).toFixed(1)}s - waiting for others...` : `Grid ${i + 1}/8   ${time.toFixed(1)}s   Penalty: ${pen}s`; if (t !== lastT) { tl.textContent = t; lastT = t; }
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) { if (net.handle(m, from)) return; sb.onMessage(m, from); },
       cleanup() { removeEventListener('pointerdown', onDown); el.remove(); S.cleanup(); },
     };

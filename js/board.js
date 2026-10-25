@@ -3,7 +3,7 @@ import { BOARDS } from './boards.js';
 // Board layer. Host owns state `s` and broadcasts it in full on every change (it's tiny);
 // clients just render it and send 'roll'. Minigames run between rounds via opts.playMg().
 let B = BOARDS.classic; const setBoard = id => { B = BOARDS[id] || BOARDS.classic; };
-const COL = { blue: 0x4aa3ff, red: 0xff5a5a, green: 0x58d68d, shop: 0xb06bff, duel: 0xff9f43, warp: 0x00cec9, toll: 0xc8a14a, slot: 0xff2d95 }, REWARD = [10, 6, 3, 0];
+const COL = { blue: 0x4aa3ff, red: 0xff5a5a, green: 0x58d68d, shop: 0xb06bff, duel: 0xff9f43, warp: 0x00cec9, toll: 0xc8a14a, slot: 0xff2d95, dash: 0xffe14d, thief: 0x7f8c8d, swap: 0xfd79a8 }, REWARD = [10, 6, 3, 0];
 const MAXI = 3;
 const ITEMS = {
   big: { n: 'Big Die', e: '🎯', c: 8, d: 'Next roll is 4-8' },
@@ -130,6 +130,9 @@ export class Board {
     else if (t === 'green') { const o = new THREE.Mesh(new THREE.OctahedronGeometry(.35), std(0xffffff, { emissive: 0x2ecc71 })); o.position.y = .7; g.add(o); g.userData.spin = 1; }
     else if (t === 'warp') { const o = new THREE.Mesh(new THREE.TorusGeometry(.45, .1, 6, 12), std(0xffffff, { emissive: 0x00cec9 })); o.position.y = .7; o.rotation.x = Math.PI / 2.4; g.add(o); g.userData.spin = 1; }
     else if (t === 'toll') { for (const k of [-.5, .5]) { const p = new THREE.Mesh(new THREE.BoxGeometry(.15, .8, .15), std(0x6d4c1d)); p.position.set(k, .4, 0); g.add(p); } const bar = new THREE.Mesh(new THREE.BoxGeometry(1.2, .12, .12), std(0xffffff)); bar.position.y = .8; g.add(bar); }
+    else if (t === 'dash') { for (const k of [-.3, .3]) { const c = new THREE.Mesh(new THREE.ConeGeometry(.3, .6, 4), std(0xffffff, { emissive: 0xffc800 })); c.rotation.z = -Math.PI / 2; c.position.set(k, .5, 0); g.add(c); } }
+    else if (t === 'thief') { const sk = new THREE.Mesh(new THREE.SphereGeometry(.36, 10, 8), std(0x2d3436)); sk.position.y = .36; sk.scale.y = 1.1; const tie = new THREE.Mesh(new THREE.ConeGeometry(.16, .3, 6), std(0x2d3436)); tie.position.y = .85; const co = new THREE.Mesh(new THREE.CylinderGeometry(.18, .18, .05, 10), std(0xffd93d, { emissive: 0x886600 })); co.position.set(0, .45, .36); co.rotation.x = Math.PI / 2; g.add(sk, tie, co); }
+    else if (t === 'swap') { for (const [c, r] of [[0xfd79a8, 0], [0x00cec9, Math.PI / 2]]) { const o = new THREE.Mesh(new THREE.TorusGeometry(.38, .09, 6, 14), std(0xffffff, { emissive: c })); o.position.y = .65; o.rotation.set(Math.PI / 2.4, r, 0); g.add(o); } g.userData.spin = 1; }
     else if (t === 'slot') {
       const b = new THREE.Mesh(new THREE.BoxGeometry(.7, .9, .5), std(0xff2d95, { emissive: 0x660033 })); b.position.y = .45;
       const l = new THREE.Mesh(new THREE.CylinderGeometry(.04, .04, .5, 5), std(0xdddddd)); l.position.set(.45, .55, 0); l.rotation.z = -.4;
@@ -177,7 +180,8 @@ export class Board {
     if (this.o.net.isHost && !mine && ['roll', 'choose', 'shop', 'slot'].includes(s.phase) && !ps[cur]?.bot) act = `<button data-a="force">⏩ ${s.phase === 'roll' ? 'Roll for' : 'Skip'} ${nm(cur)}</button>`;     // host override: nobody has to wait for an AFK player
     el.innerHTML = `<b>${B.name} · Round ${Math.min(s.round, s.rounds)} / ${s.rounds}</b> <small style="opacity:.7">[V] ${this.mapView ? 'follow player' : 'map view'}</small>` + (this.tl != null ? ` <b>⏱ <span id="tl">${Math.max(0, Math.ceil(this.tl))}</span>s</b>` : '') +
       s.order.map(id => `<div style="color:${ps[id]?.color}">${id === cur && (s.phase === 'roll' || s.phase === 'shop' || s.phase === 'choose' || s.phase === 'slot') ? '▶ ' : ''}${nm(id)} 🪙${s.coins[id]} ⭐${s.stars[id]} ${(s.items[id] || []).map(k => ITEMS[k].e).join('')}</div>`).join('') +
-      `<div>${s.log}</div>` + (s.phase === 'end' ? `<h3>🏆 ${nm(s.winner)} wins!</h3>` : '') + act;
+      `<div>${s.log}</div>` + (s.phase === 'end' ? `<h3>🏆 ${nm(s.winner)} wins!</h3>` : '') + act +
+      `<div style="font-size:11px;opacity:.65;margin-top:6px">🔵+3 🔴−3 🟢event 🟣shop 🟠duel ⚡dash 🦹thief 🔄swap 🎰slots · ⭐ = walk onto it with 20🪙 to buy</div>`;
   }
   // ---- host only
   push() { this.apply(this.s); this.o.net.broadcast('board', this.s); this.safe('bot', () => this.botTurn()); }
@@ -237,11 +241,25 @@ export class Board {
     else if (t === 'shop') s.log = `${me} entered the shop`;
     else if (t === 'slot') s.log = `${me} sits down at the slot machine`;
     else if (t === 'toll') s.log = `${me} is crossing the bridge`;
+    else if (t === 'dash') { s.log = `${me} hit a ⚡ dash pad: 3 free spaces!`; s.phase = 'moving'; this.push(); return void this.later(() => this.walk(id, 3), 600); }
+    else if (t === 'thief') s.log = this.thief(id);
+    else if (t === 'swap') s.log = this.swapPlaces(id);
     else if (t === 'warp') { const o = B.warps.find(k => k !== s.pos[id]); s.pos[id] = o; s.log = `${me} was warped across the island!`; }
     else { const d = Math.max(t === 'blue' ? 3 : -3, -s.coins[id]); s.coins[id] += d; s.log = `${me} landed on ${t}: ${d >= 0 ? '+' : ''}${d} 🪙`; }
     if (t === 'shop') { s.stock = Object.keys(ITEMS).sort(() => Math.random() - .5).slice(0, 3); s.phase = 'shop'; return this.push(); }
     if (t === 'slot') { s.phase = 'slot'; return this.push(); }
     this.nextTurn();
+  }
+  rival(id) { const o = this.s.order.filter(k => k !== id); return o.length ? o[rand(o.length)] : null; }
+  thief(id) {            // 🦹 steal up to 5 coins from a random rival (a shield blocks it)
+    const me = this.name(id), v = this.rival(id); if (!v) return `${me} found a thief's den, but nobody to rob.`;
+    if (this.guard(v)) return `${me} tried to rob ${this.name(v)}, but 🛡️ blocked it!`;
+    const n = Math.min(5, this.s.coins[v]); this.s.coins[v] -= n; this.s.coins[id] += n; return `🦹 ${me} robbed ${this.name(v)}! +${n} 🪙`;
+  }
+  swapPlaces(id) {       // 🔄 trade places with a random rival (a shield blocks it)
+    const s = this.s, me = this.name(id), v = this.rival(id); if (!v) return `${me} stepped on a swap pad, but nobody to swap with.`;
+    if (this.guard(v)) return `${me} tried to swap with ${this.name(v)}, but 🛡️ blocked it!`;
+    [s.pos[id], s.pos[v]] = [s.pos[v], s.pos[id]]; return `🔄 ${me} swapped places with ${this.name(v)}!`;
   }
   addCoins(id, n) { const s = this.s; n = Math.max(n, -s.coins[id]); s.coins[id] += n; return n; }
   guard(v) { const i = this.s.items[v].indexOf('shield'); if (i < 0) return false; this.s.items[v].splice(i, 1); return true; }

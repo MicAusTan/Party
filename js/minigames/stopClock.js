@@ -50,10 +50,11 @@ export default {
     });
     return {
       update(dt) {
-        t += dt; sb.tick(dt);
+        t += dt; sb.prog(0), sb.tick(dt);
         if (!stopped && t >= 15) stop(t, true);
         el.innerHTML = `<h2>${stopped ? stopT.toFixed(2) : t < 3 ? t.toFixed(2) : '?.??'}</h2>` + (stopped ? `<div>Off by ${Math.round(Math.abs(stopT - 10) * 1000)}ms. Waiting for others...</div>` : '<div>Target: 10.00</div>');
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) {
         if (m.k === 's') {
           if (ctx.isHost) { if (!ids.includes(from) || !(m.ts >= 0 && m.ts <= 16)) return; const ev = { k: 's', id: from, ts: +m.ts }; (stopped ? reveal : x => pend.push(x))(ev); ctx.send(ev); }

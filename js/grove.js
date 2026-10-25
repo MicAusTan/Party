@@ -9,6 +9,9 @@ import { heightfield, sstep } from './terrain.js';
 const N = 52, TAU = Math.PI * 2;
 const gauss = (x, z, cx, cz, sx, sz, a) => a * Math.exp(-.5 * (((x - cx) / sx) ** 2 + ((z - cz) / sz) ** 2));
 
+// Landmark sites, picked so nothing overlaps the road (the ring and the shortcuts are asymmetrical, so these are fixed by hand):
+const RUINS = [54, -2], FARM = [16, 10];
+
 // ---------------- Mirror Lake: an irregular, tilted, off-centre pond (lakeR < 1 is water) ----------------
 const LK = { x: -4, z: -2, a: 17, b: 10.5, rot: .3 }, lkC = Math.cos(LK.rot), lkS = Math.sin(LK.rot);
 const lakeWob = th => 1 + .17 * Math.sin(2 * th + 1) + .11 * Math.sin(3 * th + .5) + .06 * Math.sin(5 * th);
@@ -18,7 +21,7 @@ const lakePt = (phi, rho) => { const e = 1 / Math.hypot(Math.cos(phi) / LK.a, Ma
 // ---------------- terrain ----------------
 export function nat(x, z) {
   let h = .45 + .3 * Math.sin(x * .11 + 1) + .25 * Math.sin(z * .13) + .2 * Math.sin((x + z) * .19) + .15 * Math.sin(x * .27 - z * .21);     // (+.45 keeps dry land above the lake's waterline)
-  h += gauss(x, z, 7, -33, 22, 8, 6) + gauss(x, z, -17, -37, 9, 6, 3.2) + gauss(x, z, 41, -7, 9, 8, 2.5) + gauss(x, z, -37, 6, 9, 17, 1.4) + gauss(x, z, 20, 4, 6, 5, 1.2)                       // ridge, ruins hill, forest mound
+  h += gauss(x, z, 7, -33, 22, 8, 6) + gauss(x, z, -17, -37, 9, 6, 3.2) + gauss(x, z, -37, 6, 9, 17, 1.4) + gauss(x, z, 20, 4, 6, 5, 1.2)                       // ridge, ruins hill, forest mound
      + gauss(x, z, -35, -58, 12, 10, 20) + gauss(x, z, 17, -67, 18, 11, 27) + gauss(x, z, 52, -54, 9, 8, 17) + gauss(x, z, -63, -26, 10, 16, 13) + gauss(x, z, 60, -38, 12, 12, 17)   // mountains
      + gauss(x, z, 60, 14, 10, 12, 3.6) + gauss(x, z, -57, 26, 14, 9, 3.2) + gauss(x, z, -26, 38, 8, 6, 2)
      + gauss(x, z, 73, 5, 7, 52, 15) + gauss(x, z, -76, -8, 7, 66, 11) + gauss(x, z, 6, 67, 50, 7, 10) + gauss(x, z, -48, 62, 14, 8, 6);                                               // mountain walls close the valley on the east, west and south
@@ -51,7 +54,8 @@ function resample(dense, count, closed) {          // equal arc-length points (o
 }
 const ringDense = catmull(RING_PTS, true, 30), ringXY = resample(ringDense, N, true);
 const RT = Array.from({ length: N }, (_, i) => ['blue', 'blue', 'green', 'blue', 'red', 'blue'][i % 6]);
-[4, 24, 41].forEach(i => RT[i] = 'shop'); [9, 18, 35, 46].forEach(i => RT[i] = 'duel'); [12, 28].forEach(i => RT[i] = 'warp'); RT[0] = 'blue';
+[4, 10, 24, 32, 41, 49].forEach(i => RT[i] = 'shop'); [9, 18, 35, 46].forEach(i => RT[i] = 'duel'); [12, 28].forEach(i => RT[i] = 'warp'); RT[0] = 'blue';
+[7, 21, 33, 47].forEach(i => RT[i] = 'dash'); [15, 39].forEach(i => RT[i] = 'thief'); [19, 43].forEach(i => RT[i] = 'swap'); [13, 37].forEach(i => RT[i] = 'slot');     // (all picked from plain blue spaces)
 const BT = ['toll', 'red', 'green', 'blue', 'green', 'blue', 'red', 'green', 'blue', 'red', 'blue', 'green', 'blue'], GT = ['green', 'duel', 'green'];
 export const sp = ringXY.map(([x, z], i) => ({ x, z, y: nat(x, z), type: RT[i], next: [(i + 1) % N] }));
 const BEND = 25, GEND = 40, bDense = catmull([ringXY[0], [4, 18], [-1, 9], [-6, 0], [-3, -9], [3, -17], [5, -23], ringXY[BEND]], false, 24), bXY = resample(bDense, 13, false);
@@ -93,7 +97,7 @@ function groveDecor(W, add, anim) {
     c.copy(cols.grass).offsetHSL(0, 0, Math.sin(x * .7) * Math.sin(z * .6) * .035);
     c.lerp(cols.forest, Math.min(.9, 1.1 * Math.exp(-(((x + 33) / 14) ** 2 + ((z - 2) / 24) ** 2))));
     c.lerp(cols.stone, Math.min(.85, Math.exp(-(((x - 37) / 9) ** 2 + ((z + 8) / 9) ** 2)) + .5 * Math.exp(-((x / 9) ** 2 + ((z - 26) / 5) ** 2))));
-    c.lerp(cols.crop, Math.min(.8, 1.1 * Math.exp(-(((x - 33) / 8) ** 2 + ((z - 17) / 6) ** 2))));
+    c.lerp(cols.crop, Math.min(.8, 1.1 * Math.exp(-(((x - FARM[0] - 11) / 8) ** 2 + ((z - FARM[1] - 2) / 7) ** 2))));
     if (lakeR(x, z) < 1.6) { c.lerp(cols.sand, sstep(.4, -.1, y)); c.lerp(cols.bed, sstep(-.6, -2.6, y)); }
     c.lerp(cols.rock, sstep(3.4, 6.5, y) * .85); c.lerp(cols.snow, sstep(11, 15, y)); c.lerp(cols.dirt, rw * .85);
   } }));
@@ -127,7 +131,7 @@ function groveDecor(W, add, anim) {
   const pT = inst(CY(.18, .26, 1.2, 5), M(0x7b5230), NP), pA = inst(CO(1.15, 2.3, 6), M(0xffffff), NP), pB = inst(CO(.8, 1.8, 6), M(0xffffff), NP), bT = inst(CY(.2, .28, 1.3, 5), M(0x7b5230), NB), bC = inst(IC(1.25, 0), M(0xffffff), NB);
   for (let t = 0; t < 14000 && (pT.count < NP || bT.count < NB); t++) {
     const x = rr(-74, 74), z = rr(-68, 58), y = hgt(x, z); if (y < .15 || y > 9.5) continue;
-    const forest = Math.exp(-(((x + 33) / 15) ** 2 + ((z - 2) / 26) ** 2)), slope = sstep(1.5, 4, y) * (1 - sstep(8, 10, y)), ruins = Math.exp(-(((x - 36) / 10) ** 2 + ((z + 8) / 10) ** 2)), farm = Math.exp(-(((x - 31) / 10) ** 2 + ((z - 17) / 8) ** 2));
+    const forest = Math.exp(-(((x + 33) / 15) ** 2 + ((z - 2) / 26) ** 2)), slope = sstep(1.5, 4, y) * (1 - sstep(8, 10, y)), ruins = Math.exp(-(((x - RUINS[0]) / 11) ** 2 + ((z - RUINS[1]) / 11) ** 2)), farm = Math.exp(-(((x - FARM[0] - 8) / 12) ** 2 + ((z - FARM[1]) / 10) ** 2));
     const dens = .03 + forest * .95 + slope * .22 - ruins * .9 - farm; if (r() > dens || (Math.abs(x) < 20 && z > 13 && z < 38) || !far(x, z, 3.2)) continue;
     const s = rr(.8, 1.5);
     if (r() < .72 && pT.count < NP) { const c = y > 6.5 ? 0xdfe8f0 : GREENS[pT.count % 4]; put(pT, x, y + .6 * s, z, s, s, s); put(pA, x, y + 2.05 * s, z, s, s, s, r() * 3, c); put(pB, x, y + 3.1 * s, z, s, s, s, r() * 3, c); }
@@ -175,7 +179,7 @@ function groveDecor(W, add, anim) {
     live(dt => { hub.rotation.z += dt * .9; }); }
 
   // ---- Old Ruins (east): broken columns, arches, the temple steps, purple crystals, torches
-  const ruinC = inward(38, 9, 20, -4), crysM = glowMat(0x8a4ad8, 0xb060ff, 2.2), torchM = glowMat(0xff9f1a, 0xff7a00, 2.6);
+  const ruinC = RUINS, crysM = glowMat(0x8a4ad8, 0xb060ff, 2.2), torchM = glowMat(0xff9f1a, 0xff7a00, 2.6);
   for (let k = 0; k < 11; k++) { const a = k / 11 * TAU + .3, rad = 5 + (k % 3) * 1.2, x = ruinC[0] + Math.cos(a) * rad, z = ruinC[1] + Math.sin(a) * rad; if (!far(x, z, 2.4)) continue; const g = group(x, z, 0), h = k % 3 === 0 ? rr(1, 1.8) : rr(2.6, 4.2); mesh(CY(.55, .62, h, 9), M(0xc9c3b0), 0, h / 2, 0, g); mesh(BX(1.3, .3, 1.3), M(0xb8b2a0), 0, .15, 0, g); if (h > 2.5) mesh(BX(1.2, .3, 1.2), M(0xb8b2a0), 0, h + .15, 0, g); else for (let q = 0; q < 3; q++) mesh(BX(.5, .4, .5), M(0xb8b2a0), rr(-1.4, 1.4), .2, rr(-1.4, 1.4), g); }
   { const g = group(ruinC[0], ruinC[1], 0); [[9, .5], [7, .5], [5, .5]].forEach(([w, h], i) => mesh(BX(w, h, w), M(0xb8b2a0), 0, h * (i + .5), 0, g)); mesh(BX(1.6, 1.4, 1.6), M(0x8a8478), 0, 1.5 + .7, 0, g);
     for (let k = 0; k < 6; k++) { const c = mesh(IC(.5 + (k % 3) * .25, 0), crysM, Math.cos(k * 1.05) * 1.1, 2.2 + (k % 2) * .5, Math.sin(k * 1.05) * 1.1, g); c.scale.set(.6, 1.7 + (k % 3) * .4, .6); } }
@@ -185,11 +189,12 @@ function groveDecor(W, add, anim) {
   // ---- Crystal Gorge (shortcut): boulder walls and glowing crystals along the path
   const gb = inst(IC(1, 0), M(0xffffff), 90);
   for (let i = 0; i < gDense.length; i += 4) { const [x, z] = gDense[i], [nx2, nz2] = gDense[Math.min(gDense.length - 1, i + 1)], dx = nx2 - x, dz = nz2 - z, l = Math.hypot(dx, dz) || 1, px = -dz / l, pz = dx / l;
-    for (const sg of [-1, 1]) { const off = rr(2.6, 3.6) * sg, bx = x + px * off, bz = z + pz * off, by = hgt(bx, bz), s = rr(1.1, 2.4); put(gb, bx, by + s * .4, bz, s, s * 1.2, s, r() * 3, [0x6a6f7a, 0x7a7f88, 0x5a5f6a][i % 3]);
+    for (const sg of [-1, 1]) { const off = rr(3, 4) * sg, bx = x + px * off, bz = z + pz * off, by = hgt(bx, bz), s = rr(1.1, 2.4); if (nearest(bx, bz)[0] < s * .75 + 1.1) continue;     // (never on or against any road, including where the gorge meets the ring)
+      put(gb, bx, by + s * .4, bz, s, s * 1.2, s, r() * 3, [0x6a6f7a, 0x7a7f88, 0x5a5f6a][i % 3]);
       if (i % 12 === 0) { const c = mesh(IC(.5, 0), crysM, bx - px * sg * .6, by + s * 1.1, bz - pz * sg * .6); c.scale.set(.6, 1.9, .6); add(c); } } }
 
   // ---- Farmland (south-east): barn, silo, hay bales, crop rows, fences
-  const farmC = inward(45, 8, 8, 8);
+  const farmC = FARM;
   { const g = group(farmC[0], farmC[1], -.4); mesh(BX(5, 3.3, 6.5), M(0xb03a2e), 0, 1.65, 0, g); const rf = mesh(CO(4.6, 2.2, 4), M(0x6b3a2a), 0, 4.4, 0, g); rf.rotation.y = Math.PI / 4; rf.scale.set(1.05, 1, 1.28); mesh(BX(1.8, 2.4, .1), M(0xf5ead0), 0, 1.2, 3.27, g); mesh(BX(.7, .7, .1), winM, 1.6, 2.4, 3.27, g);
     mesh(CY(1.1, 1.2, 5.5, 10), M(0xc9ccd2), 4.4, 2.75, -1, g); mesh(IC(1.1, 1), M(0xaeb2ba), 4.4, 5.5, -1, g).scale.y = .6; }
   [[-.8, 6], [2, 6.6], [4.5, 5.2], [-3.8, 4.2]].forEach(([dx, dz], k) => { const x = farmC[0] + dx + 4, z = farmC[1] + dz; if (far(x, z, 2.2)) { const b = mesh(CY(.7, .7, .9, 10), M(0xd8b24a), x, hgt(x, z) + .5, z); b.rotation.z = Math.PI / 2; b.rotation.y = k; add(b); } });

@@ -65,10 +65,11 @@ export default {
     const apply = ev => { if (!(ev.id in sc)) return; sc[ev.id] = ev.sc; dirty[ev.id] = true; if (ev.b) { W.emote(ev.id, 'sad'); W.popIcon(ev.id, '💥'); } else W.hop(ev.id, .35); };
     return {
       update(dt) {
-        sb.tick(dt); time += dt; if (!done && time >= DUR) { done = true; sb.report(score); W.emote(me, 'cheer'); }
+        sb.prog(score), sb.tick(dt); time += dt; if (!done && time >= DUR) { done = true; sb.report(score); W.emote(me, 'cheer'); }
         if (pend !== null && (sendT -= dt) <= 0) { sendT = .12; ctx.send({ k: 'p', id: me, sc: score, b: pend }); pend = null; }      // throttled: coalesces fast clicking
         s.textContent = done ? `Final: ${score} - waiting for others...` : `${Math.ceil(DUR - time)}s   Score: ${score}`;
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) {
         if (m.k === 'p') {
           if (ctx.isHost) { if (!(from in sc)) return; const ev = { k: 'p', id: from, sc: Math.max(-999, Math.min(999, m.sc | 0)), b: m.b ? 1 : 0 }; apply(ev); ctx.send(ev); }

@@ -60,10 +60,11 @@ export default {
     addEventListener('keydown', key);
     return {
       update(dt) {
-        if (!done) time += dt; sb.tick(dt);
+        if (!done) time += dt; sb.prog(pos / GOAL), sb.tick(dt);
         if (pos !== sentPos && (sendT -= dt) <= 0) { sendT = .1; sentPos = pos; emit({ k: 'm', p: pos }); }   // throttled: at most ~10 messages/s even when holding a key
         tl.textContent = done ? `Done in ${time.toFixed(1)}s - waiting for others...` : time.toFixed(1) + 's';
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) {
         if (m.k === 'm') {
           if (ctx.isHost) { if (!(from in cell) || !(m.p >= 0 && m.p < N * N)) return; const ev = { k: 'm', id: from, p: m.p | 0, done: !!m.done }; apply(ev); ctx.send(ev); }

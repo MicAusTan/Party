@@ -81,7 +81,7 @@ export default {
     return {
       update(dt) {
         time += dt;
-        if (host && !over && ctx.players[whose()]?.bot && (ctx._bt = (ctx._bt || 0) + dt) > 1.3) { ctx._bt = 0; drop(); }
+        if (host && !over && ctx.players[whose()]?.bot) { const sk = ctx.skill?.(whose()) ?? .5, top = layers[layers.length - 1]; ctx._bt = (ctx._bt || 0) + dt; if (ctx._bt > .8 && (Math.abs(pos - top.x) < top.w * (.45 - .41 * sk) || ctx._bt > 4.5)) { ctx._bt = 0; drop(); } }
         if (host && !over) { ph += dt * (1.5 + .1 * (layers.length - 1)); pos = Math.sin(ph) * R; if ((acc += dt) > .05) { acc = 0; ctx.send({ L: layers, t: turn, x: +pos.toFixed(1), msg }); } if (time > 80) end(); }
         const w = whose(); s.textContent = `Height ${layers.length - 1}  |  ${w === ctx.me ? 'YOUR TURN - press!' : ctx.players[w]?.name + "'s turn"}  ${msg}`;
       },

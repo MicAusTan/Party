@@ -56,9 +56,10 @@ export default {
     addEventListener('pointerdown', onDown);
     return {
       update(dt) {
-        sb.tick(dt); if (!done) time += dt;
+        sb.prog((next - 1) / 16), sb.tick(dt); if (!done) time += dt;
         const t = done ? `Done! ${(time + pen).toFixed(1)}s - waiting for others...` : `${time.toFixed(1)}s   Next: ${next}   Penalty: ${pen}s`; if (t !== lastT) { tl.textContent = t; lastT = t; }
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) {
         if (m.k === 'n') {
           if (ctx.isHost) { if (!(from in st)) return; const ev = { k: 'n', id: from, nx: Math.max(1, Math.min(17, m.nx | 0)), pen: Math.max(0, Math.min(99, m.pen | 0)) }; if (ev.nx > st[from].nx) W.hop(from, .35); st[from] = { nx: ev.nx, pen: ev.pen }; dirty[from] = true; ctx.send(ev); }

@@ -70,7 +70,7 @@ export default {
     return {
       update(dt) {
         time += dt;
-        if (host && !over) { const ba = ctx._ba ??= {}; for (const id of ids) if (ctx.players[id].bot) { ba[id] = (ba[id] || 0) + dt * 4; while (ba[id] >= 1) { ba[id]--; pull(id); } } }
+        if (host && !over) { const ba = ctx._ba ??= {}; for (const id of ids) if (ctx.players[id].bot) { const br = ctx._br ??= {}; br[id] ??= (2.4 + 5 * (ctx.skill?.(id) ?? .5)) * (.85 + Math.random() * .3); ba[id] = (ba[id] || 0) + dt * br[id]; while (ba[id] >= 1) { ba[id]--; pull(id); } } }
         if (host && !over) {
           if ((acc += dt) > .1) { acc = 0; ctx.send({ r }); }
           if (Math.abs(r) >= 1 || time > 25) {

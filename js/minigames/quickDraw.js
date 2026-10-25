@@ -101,13 +101,14 @@ export default {
 
     return {
       update(dt) {
-        sb.tick(dt);
+        sb.prog(r / 3), sb.tick(dt);
         if (state === 'rest' && (t -= dt) <= 0) { state = 'wait'; t = delays[r]; }
         else if (state === 'wait' && (t -= dt) <= 0) { state = 'go'; ms = 0; sfx('go'); }
         else if (state === 'go') ms += dt * 1000;
         drawBoard();
         hud.textContent = times.join('  |  ');
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) {
         if (m.k === 'p') {
           if (ctx.isHost) {                         // host validates the sender, then relays to everyone

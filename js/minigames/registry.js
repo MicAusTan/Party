@@ -35,7 +35,20 @@ import oddOneOut from './oddOneOut.js';
 import redLight from './redLight.js';
 import flagRush from './flagRush.js';
 import lastStand from './lastStand.js';
+import { teamGame } from './teamGame.js';
 import tiltTable from './tiltTable.js';
 import parcelPanic from './parcelPanic.js';
 import echoChain from './echoChain.js';
 export const MINIGAMES = { buttonMash, memoryRun, shoveOff, rounds, quickDraw, stopClock, mathRace, coinGrab, dodgeRain, hotPotato, targetClick, colorFloor, mazeRace, memoryMatch, tugOfWar, higherLower, typingRace, rhythmRush, hillHold, relayRace, towerStack, syncPulse, snowballFight, simonSays, numberSort, colorClash, balloonPop, oddOneOut, redLight, flagRush, lastStand, tiltTable, parcelPanic, echoChain };
+
+// Team versions of existing games (random teams, averaged placements -- see teamGame.js)
+Object.assign(MINIGAMES, {
+  teamBalloonPop: teamGame(balloonPop, { name: 'Team Balloon Pop', desc: balloonPop.desc }),
+  teamTargetClick: teamGame(targetClick, { name: 'Team Target Click', desc: targetClick.desc }),
+  teamColorClash: teamGame(colorClash, { name: 'Team Color Clash', desc: colorClash.desc }),
+  teamCoinGrab: teamGame(coinGrab, { name: 'Team Coin Grab', desc: coinGrab.desc }),
+  teamHillHold: teamGame(hillHold, { name: 'Team Hill Hold', desc: hillHold.desc }),
+  teamDodgeRain: teamGame(dodgeRain, { name: 'Team Dodge Rain', desc: dodgeRain.desc }),
+  teamMazeRace: teamGame(mazeRace, { name: 'Team Maze Race', desc: mazeRace.desc }),
+  teamTypingRace: teamGame(typingRace, { name: 'Team Typing Race', desc: typingRace.desc }),
+});

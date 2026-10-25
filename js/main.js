@@ -184,7 +184,7 @@ function enter(code) {
   $('menu').hidden = true; $('panel').hidden = false; $('room').textContent = code; lookOpen = false; folded = false;
   if (net.isHost) {
     $('start').onclick = startGame;
-    $('stopMg').onclick = async () => { if (await ask('Skip this minigame?', 'Nobody gets points for it and the game moves on.', 'Skip it')) mg?.finish?.([]); };
+    $('stopMg').onclick = async () => { if (await ask('End this minigame?', 'It ends right now. Score-based games rank everyone by what they have so far; other games just stop with no points.', 'End it')) { if (mg?.inst?.endNow) mg.inst.endNow(); else mg?.finish?.([]); } };
     $('endGame').onclick = async () => { if (await ask('End the game?', 'This ends the game for everyone and sends you all back to the lobby.', 'End game')) { endPodium(); if (partyState) stopParty(); else board.quit(); } };
     $('botRow').onclick = e => { const b = e.target.dataset.b; if (b === 'add') addDummy(); else if (b === 'rem') removeDummy(); };
     $('settingsBtn').onclick = () => $('settings').hidden = false;

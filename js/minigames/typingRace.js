@@ -84,10 +84,11 @@ export default {
     };
     return {
       update(dt) {
-        sb.tick(dt); if (!done) time += dt;
+        sb.prog(i / list.length), sb.tick(dt); if (!done) time += dt;
         w.textContent = done ? 'Done!' : list[i]; s.textContent = done ? `${(time + errs * 2).toFixed(1)}s - waiting for others...` : `${i}/${list.length}   ${time.toFixed(1)}s   Typos: ${errs}`;
         if (!done && document.activeElement !== inp) inp.focus();
       },
+      endNow() { sb.endNow(); },
       onMessage(m, from) { if (net.handle(m, from)) return; sb.onMessage(m, from); },
       cleanup() { el.remove(); S.cleanup(); },
     };
