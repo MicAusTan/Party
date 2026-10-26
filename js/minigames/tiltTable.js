@@ -31,13 +31,16 @@ export default {
     // ---------- host simulation ----------
     ids.forEach(id => st[id].sp = .8);
     let b = { x: 1.6, z: -1.2, vx: 0, vz: 0 }, tilt = [0, 0], time = 0, nudgeT = 3, acc = 0, over = false, rk = null, ended = false, nudges = 0, seenN = 0;
-    const pack = () => ({ p: A.pack(), b: [+b.x.toFixed(2), +b.z.toFixed(2)], t: tilt.map(v => +v.toFixed(2)), s: +Math.min(DUR, time).toFixed(1), o: rk, nn: nudges });
+    const wind = { a: 0, warn: 0, dur: 0 }; let windT = 6 + Math.random() * 3;
+    const pack = () => ({ p: A.pack(), b: [+b.x.toFixed(2), +b.z.toFixed(2)], t: tilt.map(v => +v.toFixed(2)), s: +Math.min(DUR, time).toFixed(1), o: rk, nn: nudges, w: [+Math.sin(wind.a).toFixed(2), +Math.cos(wind.a).toFixed(2), wind.warn > 0 ? 1 : wind.dur > 0 ? 2 : 0] });
     let snap = pack();
+    const wel = document.createElement('div'); wel.style.cssText = 'font-size:22px;font-weight:700;color:#7fdcff;text-shadow:0 2px 6px #000;margin-top:6px'; ctx.hud.append(wel); let prevW = 0;
     const tier = s => s >= TIER[0] ? 0 : s >= TIER[1] ? 1 : s >= TIER[2] ? 2 : 3;
     function finish(r) { if (over) return; over = true; rk = r; A.S.after(2.6, () => ctx.finish([...ids], ids.map(() => Math.min(r, n - 1)))); }
     function step(dt) {
       time += dt;
       A.bots(dt, (id, s, sk) => {
+        if (Math.random() < .12 * (1.1 - sk)) return [Math.random() - .5, Math.random() - .5];          // bots slip up now and then
         const bl = Math.hypot(b.x, b.z), sp = Math.hypot(b.vx, b.vz);
         if (bl < 1.3 && sp < 1.6) { const a = ids.indexOf(id) / n * 6.283; return [Math.sin(a) * 3 - s.x, Math.cos(a) * 3 - s.z]; }      // ball is calm: spread out evenly
         const px = b.x + b.vx * .7, pz = b.z + b.vz * .7, pl = Math.hypot(px, pz) || 1, d = Math.min(7, 1.5 + pl * 1.1);
@@ -47,7 +50,10 @@ export default {
       let mx = 0, mz = 0; for (const id of ids) { mx += st[id].x; mz += st[id].z; } mx /= n; mz /= n;
       tilt = [clamp(mx / 5, -1.2, 1.2), clamp(mz / 5, -1.2, 1.2)];
       b.vx += (15 * tilt[0] - .8 * b.vx) * dt; b.vz += (15 * tilt[1] - .8 * b.vz) * dt;
-      if (!over && (nudgeT -= dt) <= 0) { nudgeT = 2.2 + Math.random() * 1.8; const a = Math.random() * 6.283, m = 3 + Math.min(2.5, time * .07); b.vx += Math.sin(a) * m; b.vz += Math.cos(a) * m; nudges++; }
+      if (!over && (nudgeT -= dt) <= 0) { nudgeT = (2.2 + Math.random() * 1.8) * [1.3, 1, .75][ctx.diff ?? 1]; const a = Math.random() * 6.283, m = 3 + Math.min(2.5, time * .07); b.vx += Math.sin(a) * m; b.vz += Math.cos(a) * m; nudges++; }
+      if (!wind.warn && !wind.dur && (windT -= dt) <= 0) { wind.a = Math.random() * 6.283; wind.warn = 1.2; }          // occasional gusts: a warning, then a steady shove on the ball
+      else if (wind.warn > 0) { if ((wind.warn -= dt) <= 0) wind.dur = 1.6 + Math.random() * 1.6; }
+      else if (wind.dur > 0) { const g = 8 + Math.min(6, time * .12); b.vx += Math.sin(wind.a) * g * dt; b.vz += Math.cos(wind.a) * g * dt; if ((wind.dur -= dt) <= 0) windT = 5 + Math.random() * 5; }
       b.x += b.vx * dt; b.z += b.vz * dt;
       if (!over) { if (Math.hypot(b.x, b.z) > R + .6) finish(tier(time)); else if (time >= DUR) finish(0); }
     }
@@ -59,6 +65,7 @@ export default {
         A.input();
         if (host) { if (!over) step(dt); snap = pack(); if ((acc += dt) >= .05) { acc = 0; ctx.send(snap); } }
         A.show(snap.p);
+        { const wv = snap.w?.[2] || 0; if (wv !== prevW) { prevW = wv; if (wv === 1) sfx('tick'); if (wv === 2) sfx('dash'); } const ar = ['⬆️', '↗️', '➡️', '↘️', '⬇️', '↙️', '⬅️', '↖️'][Math.round((Math.atan2(snap.w?.[0] ?? 0, -(snap.w?.[1] ?? 1)) / 6.283 * 8 + 8)) % 8]; wel.textContent = wv === 1 ? '💨 Wind incoming ' + ar : wv === 2 ? '💨 WIND ' + ar : ''; }
         disp[0] += (snap.t[0] - disp[0]) * Math.min(1, dt * 9); disp[1] += (snap.t[1] - disp[1]) * Math.min(1, dt * 9);
         table.rotation.set(K * disp[1], 0, -K * disp[0]);
         for (const id of ids) { const q = snap.p[id]; if (q) W.lift(id, surf(q[0], q[1])); }
@@ -71,7 +78,7 @@ export default {
           : `<h2>${Math.max(0, Math.ceil(DUR - snap.s))}</h2><div class="bar"><span style="width:${edge * 100}%;background:${edge > .75 ? '#ff5a5f' : edge > .5 ? '#ffd166' : '#6fcf97'}"></span><b>Ball: ${edge > .75 ? 'DANGER' : edge > .5 ? 'drifting' : 'steady'}</b></div><div>Stand opposite the ball!</div>`;
       },
       onMessage(m, from) { if (A.onInput(m, from)) return; if (!host && m.p) snap = m; },
-      cleanup() { A.cleanup(); el.remove(); },
+      cleanup() { wel.remove(); A.cleanup(); el.remove(); },
     };
   },
 };

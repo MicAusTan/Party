@@ -15,6 +15,7 @@
   <h1>Party Game</h1>
   <input id="name" placeholder="Your name" maxlength="12">
   <div id="mlook" class="look" data-look></div>
+  <button id="shopBtn" class="ghost">🛍 Shop <span class="gemchip"></span></button>
   <button id="host">Host game</button>
   <div class="row"><input id="code" placeholder="Room code" maxlength="5"><button id="join">Join</button></div>
   <button id="solo" class="ghost">🧪 Practice (solo, offline)</button>
@@ -24,6 +25,7 @@
   <div id="body">
     <div id="players"></div>
     <button id="lookBtn" class="ghost">🎨 Customize</button>
+    <button id="shopBtn2" class="ghost">🛍 Shop <span class="gemchip"></span></button>
     <div id="look" class="look" data-look></div>
     <small id="pushHint">🖐 Left-click or press F to shove people (mind the edge!)</small>
     <button id="leaveBtn" class="ghost">🚪 Leave game</button>
@@ -63,7 +65,7 @@
   </div>
   <label><input type="checkbox" id="team"> Team minigames (Tug of War, Relay Race, Flag Rush)</label>
   <div class="srow">Fill empty seats with bots up to <select id="fill"><option value="0">Off</option><option value="3">3 players</option><option value="4">4 players</option><option value="6">6 players</option><option value="8">8 players</option></select></div>
-  <div class="srow">Bot skill <select id="botSkill"><option value="easy">Easy</option><option value="mixed">Mixed (every bot different)</option><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>
+  <div class="srow">Bot skill <select id="botSkill"><option value="mixed">Mixed (every bot different)</option><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>
   <div class="srow"><b>Minigame pool</b><span><button id="poolAll" class="ghost">All</button> <button id="poolNone" class="ghost">None</button></span></div>
   <div id="pool"></div>
   <button id="settingsClose">Done</button>

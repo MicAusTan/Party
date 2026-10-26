@@ -5,9 +5,9 @@ import { topDown } from './kit.js';
 // Set: a lava cave. The tiles are stone slabs over a glowing lava lake; slabs that vanish drop you into the lava with a splash.
 const G = 6, S = 3.6, H = G * S / 2;
 export default {
-  emotes: false, name: 'Color Floor', desc: 'Tiles flash red, then vanish! Keep moving and stay on solid ground. Last one standing wins. WASD to move.',
+  emotes: false, name: 'Crumbling Floor', desc: 'Tiles flash red, then vanish - but they grow back a few seconds later! Keep moving and stay on solid ground. Last one standing wins. WASD to move, F / Shift / click to shove.',
   create(ctx) {
-    const W = ctx.world, A = arena(ctx, { disc: false, radius: 10.5, set: { ...topDown(W, 13, 20), sky: 0x1a0a08, fog: { color: 0x1a0a08, near: 34, far: 82 }, light: .9, sun: { color: 0xffb070, intensity: 1, pos: [4, 14, 8] } } }), { ids, st, S: SET } = A, host = ctx.isHost, fall = {}, was = {}, splashed = {}, tiles = [];
+    const W = ctx.world, A = arena(ctx, { shove: true, disc: false, radius: 10.5, set: { ...topDown(W, 13, 20), sky: 0x1a0a08, fog: { color: 0x1a0a08, near: 34, far: 82 }, light: .9, sun: { color: 0xffb070, intensity: 1, pos: [4, 14, 8] } } }), { ids, st, S: SET } = A, host = ctx.isHost, fall = {}, was = {}, splashed = {}, tiles = [];
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
     const lava = SET.box(140, .5, 140, 0xd8350a, 0, -7.5, 0, { em: 0x8a2200 }); SET.anim((dt, tn) => lava.material.emissive.setRGB(.5 + Math.sin(tn * 1.7) * .08, .12, .02));
     for (let k = 0; k < 16; k++) { const a = k / 16 * 6.283 + .2, r = 17 + k % 3 * 4; SET.cone(2.2 + k % 4, 7 + k % 5 * 2.6, 0x2a1a17, Math.sin(a) * r, -7.5, Math.cos(a) * r, { seg: 5 }); }       // rock spires
@@ -18,7 +18,7 @@ export default {
       const m = new THREE.Mesh(new THREE.BoxGeometry(S - .15, .4, S - .15), new THREE.MeshStandardMaterial({ color: base, flatShading: true }));
       m.position.set(-H + S * (i % G + .5), -.2, -H + S * ((i / G | 0) + .5)); m.userData.base = base; SET.root.add(m); tiles.push(m);
     }
-    const ts = Array(G * G).fill(1), warn = Array(G * G).fill(0); let time = 0, spawnT = 2, out = [], acc = 0, over = false, lt = 0;
+    const ts = Array(G * G).fill(1), warn = Array(G * G).fill(0), gone = Array(G * G).fill(0); let time = 0, spawnT = 2, out = [], acc = 0, over = false, lt = 0;
     const tileAt = (x, z) => { const cx = Math.floor((x + H) / S), cz = Math.floor((z + H) / S); return cx < 0 || cx >= G || cz < 0 || cz >= G ? -1 : cz * G + cx; };
     const pack = () => ({ p: A.pack(), t: ts.join('') });
     let snap = pack();
@@ -30,7 +30,7 @@ export default {
         spawnT = Math.max(.8, 2.2 - time * .04); const free = ts.map((v, i) => v === 1 ? i : -1).filter(i => i >= 0);
         for (let n = 0; n < 2 + (time / 12 | 0) && free.length; n++) { const k = free.splice(Math.random() * free.length | 0, 1)[0]; ts[k] = 2; warn[k] = 1.6; }
       }
-      for (let i = 0; i < ts.length; i++) if (ts[i] === 2 && (warn[i] -= dt) <= 0) ts[i] = 0;
+      for (let i = 0; i < ts.length; i++) { if (ts[i] === 2 && (warn[i] -= dt) <= 0) { ts[i] = 0; gone[i] = (3.2 + Math.random() * 1.6) * [.7, 1, 1.5][ctx.diff ?? 1]; } else if (ts[i] === 0 && (gone[i] -= dt) <= 0) ts[i] = 1; }   // slabs grow back
       for (const id of ids) { const s = st[id]; if (!s.alive) continue; const i = tileAt(s.x, s.z); if (i < 0 || ts[i] === 0) { s.alive = false; out.push(id); } }
       const al = ids.filter(id => st[id].alive);
       if (al.length <= (ids.length > 1 ? 1 : 0) || time > 90) { over = true; ctx.send(pack()); ctx.finish([...al, ...out.reverse()]); }

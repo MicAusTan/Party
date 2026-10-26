@@ -4,7 +4,7 @@ import { arena } from './arena.js';
 import { topDown, ringPts, pine, flakes } from './kit.js';
 // Set: a frozen pond in the mountains. A shiny ice rink inside a snowbank, igloos, snowmen and snowy pines around it, and snow falling over everything.
 export default {
-  name: 'Snowball Fight', desc: 'Throw snowballs with SPACE in the direction you\'re facing (move to aim). 3 hits and you\'re out. Last one standing wins. WASD to move.',
+  name: 'Snowball Fight', desc: 'Throw snowballs with SPACE or a left-click in the direction you\'re facing (move to aim). 3 hits and you\'re out. Last one standing wins. WASD to move.',
   create(ctx) {
     const W = ctx.world, A = arena(ctx, { set: { ...topDown(W, 13.5, 21), sky: 0xcfe8ff, fog: { color: 0xcfe8ff, near: 48, far: 115 }, light: 1.15, sun: { intensity: 1.15, pos: [5, 16, 8] } } }), { ids, st, S } = A, host = ctx.isHost, bm = [], was = {}, hpPrev = {};
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
@@ -13,10 +13,10 @@ export default {
     ringPts(3, 17.5, .6).forEach(([x, z, a]) => { S.sph(2.6, 0xf4fbff, x, 0, z, { seg: 10 }); S.box(1.4, 1.2, 1.6, 0x35495e, x * .88, 0, z * .88, { ry: a }); });                  // igloos
     ringPts(5, 15.6, 1.4).forEach(([x, z]) => { S.sph(.7, 0xffffff, x, .7, z, { seg: 8 }); S.sph(.5, 0xffffff, x, 1.7, z, { seg: 8 }); S.sph(.36, 0xffffff, x, 2.45, z, { seg: 8 }); S.cone(.08, .5, 0xff8a1a, x, 2.4, z + .35, { seg: 5 }).rotation.x = Math.PI / 2; S.cyl(.28, .28, .3, 0x222222, x, 2.75, z, { seg: 8 }); });   // snowmen
     flakes(S, 220, 44, 16, .13);
-    const hp = {}, cd = {}; ids.forEach(id => { hp[id] = 3; cd[id] = 0; st[id].fx = 0; st[id].fz = -1; st[id].fire = false; });
+    const hp = {}, cd = {}; ids.forEach(id => { hp[id] = [4, 3, 2][ctx.diff ?? 1]; cd[id] = 0; st[id].fx = 0; st[id].fz = -1; st[id].fire = false; });
     let balls = [], out = [], time = 0, acc = 0, over = false;
     const kd = e => { if (e.code === 'Space' && !e.repeat) host ? st[ctx.me] && (st[ctx.me].fire = true) : ctx.send({ f: 1 }); };
-    addEventListener('keydown', kd);
+    addEventListener('keydown', kd); const pd = e => { if (e.button === 0 && !e.target.closest?.('button,input')) kd({ code: 'Space' }); }; addEventListener('pointerdown', pd);
     const pack = () => ({ p: A.pack(), b: balls.map(b => [+b.x.toFixed(2), +b.z.toFixed(2)]), h: hp });
     let snap = pack();
     function step(dt) {
@@ -55,7 +55,7 @@ export default {
         el.innerHTML = ids.map(id => `<div style="color:${ctx.players[id].color}">${ctx.esc(ctx.players[id].name)} ${'❤'.repeat(Math.max(0, snap.h[id]))}</div>`).join('');
       },
       onMessage(m, from) { if (A.onInput(m, from)) return; if (host) { if (m.f && st[from]) st[from].fire = true; } else if (m.p) snap = m; },
-      cleanup() { removeEventListener('keydown', kd); A.cleanup(); bm.forEach(m => W.scene.remove(m)); el.remove(); },
+      cleanup() { removeEventListener('keydown', kd); removeEventListener('pointerdown', pd); A.cleanup(); bm.forEach(m => W.scene.remove(m)); el.remove(); },
     };
   },
 };

@@ -6,6 +6,9 @@ import { BOARDS } from './boards.js';
 import { sfx, toggleMute, isMuted } from './sfx.js';
 import { MINIGAMES } from './minigames/registry.js';
 import { EMOTES, playEmote } from './emotes.js';
+import { gems as gemBal, onGems, addGems, claimDaily, gemsFor, sanitizeLook, owns } from './wallet.js';
+import { initWheel } from './wheel.js';
+import { initShop } from './shopui.js';
 import { showPodium } from './victory.js';
 import { COLORS, ACCENTS, OPTS, DEFAULT_LOOK, cleanLook, randomLook } from './look.js';
 
@@ -18,6 +21,7 @@ const sim = {}, keys = {}; let cfg = { mode: 'board', rounds: 8, off: [], board:
 
 try { cfg = { ...cfg, ...JSON.parse(localStorage.getItem('pg-cfg') || '{}') }; } catch {}
 try { look = { ...look, ...JSON.parse(localStorage.getItem('pg-look') || '{}') }; $('name').value = localStorage.getItem('pg-name') || ''; } catch {}
+look = sanitizeLook(look);
 addEventListener('keydown', e => keys[e.code] = true);
 addEventListener('keyup', e => keys[e.code] = false);
 const myName = () => {
@@ -26,11 +30,9 @@ const myName = () => {
   return n;
 };
 // ---- emotes: a small button (bottom-right) opens a row of emotes; everything is cosmetic and relayed by the host
-const eb = document.createElement('div'); eb.id = 'emotes'; eb.hidden = true;
-eb.innerHTML = `<div id="emoWheel" hidden>${EMOTES.map((e, i) => `<button data-e="${i}" tabindex="-1" title="${e.n}">${e.ch}</button>`).join('')}</div><button id="emoBtn" tabindex="-1" title="Emotes">😀</button>`;
-document.body.append(eb);
-const emoOK = () => { if (!me) return false; const d = mg && MINIGAMES[mg.key]; return !(d && d.emotes === false); };   // minigames opt out with `emotes: false`
-const emoSync = () => { eb.hidden = !emoOK(); if (eb.hidden) eb.querySelector('#emoWheel').hidden = true; };
+const wheel = initWheel({ ok: () => emoOK(), send: i => sendEmote(i) });
+const emoOK = () => { if (!me || document.getElementById('shop')?.hidden === false) return false; const d = mg && MINIGAMES[mg.key]; return !(d && d.emotes === false); };   // minigames opt out with `emotes: false`
+const emoSync = () => wheel.sync();
 let emoAt = 0; const lastEmo = {};
 function relayEmote(id, i) {            // host: validate + rate-limit, play, tell everyone
   i |= 0; if (!EMOTES[i] || !players[id]) return;
@@ -41,19 +43,25 @@ function sendEmote(i) {
   const t = performance.now(); if (t - emoAt < 600) return; emoAt = t;     // tiny cooldown, just a safety rail
   if (net.isHost) relayEmote(me, i); else { playEmote(world, me, i, true); net.send('emote', { e: i }); }
 }
-eb.addEventListener('pointerdown', e => e.stopPropagation());               // never count as a click for minigames
-eb.addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return; b.blur();
-  if (b.id === 'emoBtn') { const w = eb.querySelector('#emoWheel'); w.hidden = !w.hidden; return; }
-  sendEmote(+b.dataset.e); eb.querySelector('#emoWheel').hidden = true;
-});
 net.on('emote', (d, from) => { if (net.isHost) relayEmote(from, d.e); else if (d.id !== me && EMOTES[d.e | 0]) playEmote(world, d.id, d.e | 0, false); });
 
 // ---- victory podium (cosmetic; blocks free-roam movement while it's up)
 let podium = null;
 const endPodium = () => { podium?.end(); podium = null; };
 function podiumFor(order, ranks, o) { endPodium(); const me_ = podium = showPodium(world, players, order, ranks, { ...o, onEnd: () => { if (podium === me_) podium = null; } }); }
-function finalPodium(order, ranks) { if (order.length) podiumFor(order, ranks, { secs: 7 }); }
+function finalPodium(order, ranks) { if (order.length) { podiumFor(order, ranks, { secs: 7 }); finalGems(order, ranks); } }
+function finalGems(order, ranks) {
+  const i = order.indexOf(me); if (i < 0 || practice) return;
+  const r = ranks?.[i] ?? i; let g = r === 0 ? 20 : r === 1 ? 10 : r === 2 ? 5 : 0;
+  if (cfg.mode === 'board') g += (board.s?.stars?.[me] || 0) * 4;
+  if (g) { addGems(g); toast('💎 +' + g + ' gems for the final standings', 2500); }
+}
+function awardGems(pl, rk, adj) {
+  const i = pl.indexOf(me); if (i < 0 || practice) return 0;
+  let g = gemsFor(rk[i], pl.length);
+  if (board.active) { g += Math.max(0, Math.round(board.rewardFor(me, rk[i], adj, pl.length) / 5)); if (board.s?.mega && rk[i] === 0) g += 5; }
+  g += claimDaily(); addGems(g); return g;
+}
 const rankBy = (ids, key) => { const o = [...ids].sort((a, b) => key(b) - key(a)); return [o, o.map(id => o.findIndex(x => key(x) === key(id)))]; };
 
 const toast = (msg, ms = 1200) => { $('banner').innerHTML = `<div>${esc(msg)}</div>`; setTimeout(() => { if (!mg) $('banner').innerHTML = ''; }, ms); };
@@ -66,7 +74,7 @@ function lock() {
   const n = Object.keys(players).length, need = practice ? 1 : 2;
   $('panel').classList.toggle('compact', !lobby); $('panel').classList.toggle('folded', folded);
   $('fold').textContent = folded ? '+' : '–';
-  $('players').hidden = !lobby; $('lookBtn').hidden = lobby; $('look').hidden = !lobby && !lookOpen;
+  $('players').hidden = !lobby; $('lookBtn').hidden = lobby; $('shopBtn2').hidden = !lobby; $('look').hidden = !lobby && !lookOpen;
   $('waitMsg').hidden = host || !lobby; $('hostCtl').hidden = !host; $('pushHint').hidden = !lobby;
   $('start').hidden = $('settingsBtn').hidden = !lobby;
   $('start').textContent = cfg.mode === 'party' ? '▶ Start minigame party' : '▶ Start board game'; $('start').disabled = n < need; $('startHint').hidden = !lobby || n >= need;
@@ -91,25 +99,26 @@ let prevN = 0;
 function setPlayers(p) {
   const n = Object.keys(p).length; if (prevN && n > prevN) sfx('join'); prevN = n;
   players = p; world.sync(players);
-  $('players').innerHTML = Object.values(players).map(q => `<div style="color:${q.color}">${q.id === 'host' ? '👑' : '●'} ${esc(q.name)} <b>${q.score || 0}</b></div>`).join('');
+  $('players').innerHTML = Object.values(players).map(q => `<div style="color:${q.color}">${q.id === 'host' ? '👑' : '●'} ${esc(q.name)}${q.title && q.title !== 'none' ? `<small> ${OPTS.title.vals[q.title]}</small>` : ''} <b>${q.score || 0}</b></div>`).join('');
   renderLook(); lock();
 }
 function renderLook() {
   const cur = players[me] ?? look, who = me ?? 'host';
   document.querySelectorAll('[data-sw]').forEach(el => { const k = el.dataset.sw, list = k === 'color' ? COLORS : ACCENTS;
     el.innerHTML = list.map(c => `<i class="sw${cur[k] === c ? ' me' : k === 'color' && taken(c, who) ? ' taken' : ''}" data-c="${c}" style="background:${c}"></i>`).join(''); });
-  document.querySelectorAll('[data-opt]').forEach(el => el.value = cur[el.dataset.opt] ?? look[el.dataset.opt]);
+  document.querySelectorAll('[data-opt]').forEach(el => { const k = el.dataset.opt, cv = cur[k] ?? look[k];
+    el.innerHTML = Object.entries(OPTS[k].vals).filter(([v]) => owns(k, v) || v === cv).map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); el.value = cv; });
 }
 const pushLobby = () => { setPlayers(players); net.broadcast('lobby', players); };
-function setLook(patch) {
-  look = { ...look, ...patch }; try { localStorage.setItem('pg-look', JSON.stringify(look)); } catch {}
+function setLook(patch, temp) {
+  look = { ...look, ...patch }; if (!temp) try { localStorage.setItem('pg-look', JSON.stringify(look)); } catch {}
   if (!me) return renderLook();                       // customizing from the menu, before joining
   if (net.isHost) { Object.assign(players.host, mkLook(look, 'host')); pushLobby(); }
   else net.send('cust', look);
 }
 document.querySelectorAll('[data-look]').forEach(el => {
   el.innerHTML = '<div class="lbl">Color</div><div class="swatches" data-sw="color"></div><div class="lbl">Accent (hat, details)</div><div class="swatches" data-sw="accent"></div>' +
-    Object.entries(OPTS).map(([k, o]) => `<label class="opt">${o.label}<select data-opt="${k}">${Object.entries(o.vals).map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`).join('') +
+    Object.entries(OPTS).map(([k, o]) => `<label class="opt">${o.label}<select data-opt="${k}"></select></label>`).join('') +
     '<button class="ghost" data-rand>🎲 Randomize</button>';
 });
 document.addEventListener('click', e => {
@@ -117,12 +126,16 @@ document.addEventListener('click', e => {
   if (sw && c) { if (sw.dataset.sw === 'color' ? !taken(c, me ?? 'host') : true) setLook({ [sw.dataset.sw]: c }); }
   if (e.target.dataset?.rand !== undefined) {
     const r = a => a[Math.random() * a.length | 0], p = { accent: r(ACCENTS), color: r(COLORS.filter(c => !taken(c, me ?? 'host'))) };
-    for (const k in OPTS) p[k] = r(Object.keys(OPTS[k].vals)); setLook(p);
+    for (const k in OPTS) p[k] = r(Object.keys(OPTS[k].vals).filter(v => owns(k, v))); setLook(p);
   }
 });
 document.addEventListener('change', e => { const k = e.target.dataset?.opt; if (k) setLook({ [k]: e.target.value }); });
 renderLook();
 $('lookBtn').onclick = () => { lookOpen = !lookOpen; lock(); };
+const shop = initShop({ cur: () => look, apply: p => setLook(p), toast, name: () => $('name').value.trim() || 'You' });
+$('shopBtn').onclick = $('shopBtn2').onclick = () => shop.open();
+const gemTxt = () => document.querySelectorAll('.gemchip').forEach(e => { if (!e.closest('#shop')) e.textContent = '💎 ' + gemBal(); });
+onGems(() => { gemTxt(); renderLook(); }); gemTxt();
 $('fold').onclick = () => { folded = !folded; lock(); };
 
 function fillBots() {   // top the table up with bots to the host's 'fill seats' target (previous fill bots are replaced)
@@ -290,11 +303,35 @@ addEventListener('keydown', e => { if (e.code === 'KeyF' && !e.repeat && !/INPUT
 
 // ---- minigames
 function startRandomMg(key) {
-  if (mg || !net.isHost) return;
+  if (mg || voting || !net.isHost) return;
   const ks = poolKeys(); key ||= ks[Math.random() * ks.length | 0];
-  const seed = Math.random() * 2 ** 31 | 0;
-  net.broadcast('mg:start', { key, seed }); startMg(key, seed);
+  const seed = Math.random() * 2 ** 31 | 0, def = MINIGAMES[key];
+  if (!def?.tiers || typeof document === 'undefined' || !document.body?.append) { net.broadcast('mg:start', { key, seed, diff: 1 }); startMg(key, seed, 1); return; }
+  // Games with `tiers` start with a table-wide vote: everyone plays the winning tier (ties: random). Humans only; no votes = tier 0.
+  voting = { key, seed, votes: {} }; net.broadcast('mg:vote', { key }); showVote(key);
+  const mine = voting; setTimeout(() => { if (voting === mine) resolveVote(); }, 9000);
 }
+let voting = null, voteEl = null;
+function hideVote() { voteEl?.remove(); voteEl = null; }
+function showVote(key) {
+  hideVote(); const def = MINIGAMES[key]; if (!def?.tiers) return; const el = document.createElement('div'); el.className = 'box'; el.id = 'vote';
+  el.style.cssText = 'top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;text-align:center;max-width:92vw;align-items:center';
+  el.innerHTML = `<h2 style="margin:0">${esc(def.name)}</h2><div>Vote for the difficulty - everyone plays the winning one.</div><div style="display:flex;flex-wrap:wrap;justify-content:center">` +
+    def.tiers.map((t, i) => `<button data-i="${i}" style="margin:4px;padding:10px 14px;min-width:120px">${esc(t.n)}<br><small>${t.m !== 1 ? 'x' + t.m + ' coins' : 'normal coins'}${t.pen ? ', -' + t.pen + ' if bottom half' : ''}</small>${t.d ? '<br><small style="font-weight:400">' + esc(t.d) + '</small>' : ''}</button>`).join('') + '<div></div></div><small id="vt"></small>';
+  el.onclick = e => { const b = e.target.closest('button[data-i]'); if (!b) return; el.querySelectorAll('button').forEach(x => x.style.outline = ''); b.style.outline = '3px solid #fff'; if (net.isHost) castVote(me, +b.dataset.i); else net.send('mg:pick', { i: +b.dataset.i }); };
+  document.body.append(el); voteEl = el; let t = 9; const iv = setInterval(() => { if (!voteEl || voteEl !== el) return clearInterval(iv); t--; const v = el.querySelector('#vt'); if (v) v.textContent = Math.max(0, t) + 's'; }, 1000);
+}
+function castVote(id, i) {
+  if (!voting || !players[id] || players[id].bot || !(i >= 0 && i < MINIGAMES[voting.key].tiers.length)) return;
+  voting.votes[id] = i | 0; if (Object.keys(players).filter(k => !players[k].bot).every(k => k in voting.votes)) resolveVote();
+}
+function resolveVote() {
+  const v = voting; if (!v) return; voting = null; hideVote(); const n = MINIGAMES[v.key].tiers.length, c = Array(n).fill(0);
+  Object.values(v.votes).forEach(i => c[i]++); const top = Math.max(...c), tied = c.map((x, i) => x === top ? i : -1).filter(i => i >= 0), tier = top ? tied[Math.random() * tied.length | 0] : Math.max(0, MINIGAMES[v.key].tiers.findIndex(t => t.def));
+  net.broadcast('mg:start', { key: v.key, seed: v.seed, diff: tier }); startMg(v.key, v.seed, tier);
+}
+net.on('mg:pick', (d, from) => { if (net.isHost) castVote(from, +d?.i); });
+net.on('mg:vote', d => { if (!net.isHost && MINIGAMES[d.key]) showVote(d.key); });
 // Bot skill 0..1 (host's setting + a stable per-bot wobble so bots differ). Host-only; never use ctx.rng for bots.
 // Every bot has its own talent (stable for the whole session) and a specialty per minigame (stable hash of bot + game), so some bots are
 // great at one game and bad at another. 'Mixed' spreads the talents wide; the other levels shift everybody up or down.
@@ -304,16 +341,17 @@ const botSkill = id => {
   const k = id + '|' + (mg?.key ?? ''), tal = skTal[id] ??= (Math.random() - .5) * (cfg.botSkill === 'mixed' ? .7 : .4), spec = skSpec[k] ??= (hash01(k) - .5) * .5;
   return Math.max(.05, Math.min(.97, (SKILL[cfg.botSkill] ?? .5) + tal + spec));
 };
-function startMg(key, seed) {
+function startMg(key, seed, diff = 1) {
   endPodium(); const def = MINIGAMES[key]; $('hud').innerHTML = ''; mg = { key, inst: null }; lock();
   const ctx = {
-    players, me, world, isHost: net.isHost, hud: $('hud'), esc, rng: mulberry(seed), skill: botSkill,
+    players, me, world, isHost: net.isHost, hud: $('hud'), esc, rng: mulberry(seed), skill: botSkill, diff,           // diff: 0 easy / 1 normal / 2 hard (same on every client; games scale their own rules with it)
     send: m => net.isHost ? net.broadcast('mg:msg', m) : net.send('mg:msg', m),
-    finish: (pl, rk) => {
+    finish: (pl, rk, adj) => {
+      const T = def.tiers?.[diff]; if (T && !adj) { adj = {}; Object.keys(players).forEach(id => adj[id] = { m: T.m ?? 1, pen: T.pen ?? 0 }); }       // tier payout: bigger rewards, bottom-half penalty
       rk ||= pl.map((_, i) => i);
-      if (board.active) board.onMgEnd(pl, rk);
+      if (board.active) board.onMgEnd(pl, rk, adj);
       else pl.forEach((id, i) => { if (players[id]) players[id].score = (players[id].score || 0) + pl.length - rk[i]; });
-      net.broadcast('mg:end', { placements: pl, ranks: rk }); net.broadcast('lobby', players); endMg(pl, rk); setPlayers(players);
+      net.broadcast('mg:end', { placements: pl, ranks: rk, adj }); net.broadcast('lobby', players); endMg(pl, rk, adj); setPlayers(players);
       if (net.isHost) { admitQueued(); if (party) { const mine = party; setTimeout(() => { if (party === mine) nextParty(); }, 6000); } }
     },
   };
@@ -327,17 +365,18 @@ function startMg(key, seed) {
   };
   tick();
 }
-function endMg(pl, rk = pl.map((_, i) => i)) {
+function endMg(pl, rk = pl.map((_, i) => i), adj) {
   sfx(rk[pl.indexOf(me)] === 0 ? 'win' : 'click');
+  const gg = awardGems(pl, rk, adj);
   mg?.inst?.cleanup(); mg = null; lock();
   if (pl.length) podiumFor(pl, rk, { secs: 4 });
-  const pts = i => board.active ? `🪙${board.reward(rk[i])}${board.s?.mega && rk[i] === 0 ? ' +⭐' : ''}` : `+${pl.length - rk[i]}`;
-  $('hud').innerHTML = `<div class="mg"><h2>${pl.length ? 'Results' : 'Stopped'}</h2>${pl.map((id, i) => `<div>${rk[i] + 1}. ${esc(players[id]?.name ?? '?')} <b>${pts(i)}</b></div>`).join('')}</div>`;
+  const pts = i => board.active ? `🪙${board.rewardFor(pl[i], rk[i], adj, pl.length)}${board.s?.mega && rk[i] === 0 ? ' +⭐' : ''}` : `+${pl.length - rk[i]}`;
+  $('hud').innerHTML = `<div class="mg res"><h2>${pl.length ? 'Results' : 'Stopped'}</h2>${pl.map((id, i) => `<div>${rk[i] + 1}. ${esc(players[id]?.name ?? '?')} <b>${pts(i)}</b></div>`).join('')}${gg ? `<div style="color:#7df;margin-top:4px">💎 +${gg} gems</div>` : ''}</div>`;
   setTimeout(() => { if (!mg) $('hud').innerHTML = ''; }, 4000);
 }
-net.on('mg:start', d => { if (!net.isHost && MINIGAMES[d.key]) startMg(d.key, d.seed); });
+net.on('mg:start', d => { hideVote(); if (!net.isHost && MINIGAMES[d.key]) startMg(d.key, d.seed, d.diff ?? 1); });
 net.on('mg:msg', (d, from) => mg?.inst?.onMessage(d, from));
-net.on('mg:end', d => { if (!net.isHost && mg) endMg(d.placements, d.ranks); });
+net.on('mg:end', d => { if (!net.isHost && mg) endMg(d.placements, d.ranks, d.adj); });
 
 // ---- main loop: host simulates free-roam at 60fps, broadcasts snapshots at 20Hz
 let last = performance.now(), acc = 0, lastIn = '';

@@ -7,9 +7,9 @@ canvas{position:fixed;inset:0;width:100%;height:100%}
 input,button{padding:8px;border-radius:6px;border:0;font:inherit}
 button{background:#f1c40f;cursor:pointer;font-weight:700}
 h1{margin:0;font-size:22px;text-align:center}
-#hud{position:fixed;top:12px;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none}
-.mg{background:#000a;padding:14px 22px;border-radius:12px;min-width:300px}
-.mg h2{margin:0 0 8px;font-size:34px}
+#hud{position:fixed;top:8px;left:0;right:0;padding:0 270px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;text-align:center;pointer-events:none}
+.mg{background:#000a;padding:10px 18px;border-radius:12px;min-width:min(300px,100%);max-width:100%;box-sizing:border-box;max-height:42vh;overflow:hidden}
+.mg h2{margin:0 0 6px;font-size:26px}
 .bar{position:relative;height:22px;margin:4px 0;background:#fff3;border-radius:6px;overflow:hidden;text-align:left}
 .bar span{position:absolute;inset:0 auto 0 0}.bar b{position:relative;padding:0 8px;line-height:22px}
 #banner{position:fixed;top:30%;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;text-shadow:0 2px 8px #000}
@@ -36,7 +36,7 @@ button.ghost{background:#fff2;color:#fff;font-weight:600}
 #panel.compact{padding:8px 12px;width:auto;min-width:150px}
 #panel.folded #body{display:none}
 #settings,#confirm{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;z-index:10}#confirm{z-index:20}#confirm[hidden],#settings[hidden]{display:none}
-.sbar{position:fixed;left:12px;bottom:12px;background:#000b;padding:8px 12px;border-radius:10px;font-size:13px;display:flex;flex-direction:column;gap:3px;z-index:3;pointer-events:none;min-width:130px}
+.sbar{position:fixed;left:12px;bottom:12px;max-height:55vh;flex-wrap:wrap;align-content:flex-start;column-gap:14px;background:#000b;padding:8px 12px;border-radius:10px;font-size:13px;display:flex;flex-direction:column;gap:3px;z-index:3;pointer-events:none;min-width:130px}
 .sheet{position:static;width:min(460px,92vw);max-height:88vh;overflow-y:auto;box-sizing:border-box}
 .sheet h2{margin:0}.srow{display:flex;justify-content:space-between;align-items:center;gap:8px}
 #pool{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
@@ -52,4 +52,41 @@ select{padding:4px;border-radius:6px;border:0;font:inherit}
 #emoWheel{display:grid;grid-template-columns:repeat(4,46px);gap:6px;padding:8px;border-radius:14px;background:#000b}
 #emoWheel button{padding:6px 0}
 
-.tbar{position:fixed;right:12px;top:12px;background:#000b;padding:8px 12px;border-radius:10px;font-size:13px;z-index:3;pointer-events:none;max-width:240px;line-height:1.5}
+.tbar{position:fixed;right:12px;top:12px;background:#000b;padding:8px 12px;border-radius:10px;font-size:13px;z-index:3;pointer-events:none;max-width:240px;line-height:1.5;max-height:40vh;overflow:hidden}
+
+.mg.res{position:fixed;right:12px;top:50%;transform:translateY(-50%);min-width:170px;max-width:240px;max-height:80vh;font-size:15px;text-align:left;z-index:4}
+.mg.res h2{text-align:center}
+#hud .mg.res{}
+
+.gemchip{color:#7df}
+#wheel{position:fixed;left:50%;top:50%;width:340px;height:340px;margin:-170px 0 0 -170px;z-index:25;pointer-events:none;border-radius:50%;background:radial-gradient(#000c 36%,#0008 68%,#0000 71%);animation:wopen .14s ease-out}
+#wring button{position:absolute;width:58px;height:58px;font-size:28px;line-height:1;padding:0;border-radius:50%;background:#1b1340ee;border:2px solid #fff4;transform:translate(-50%,-50%);pointer-events:auto;animation:wpop .2s backwards;transition:transform .08s,border-color .08s}
+#wring button.on{transform:translate(-50%,-50%) scale(1.28);border-color:#ffd93d;background:#3b2f8aee}
+#wring button i{position:absolute;left:3px;top:0;font:700 11px system-ui;opacity:.6}
+#whub{position:absolute;left:50%;top:50%;width:120px;transform:translate(-50%,-50%);text-align:center;pointer-events:none}
+#whub b{display:block;font-size:17px;min-height:22px}#whub button{pointer-events:auto;padding:0 8px;background:#fff2;color:#fff}
+@keyframes wopen{from{opacity:0;transform:scale(.7)}}
+@keyframes wpop{from{opacity:0;transform:translate(-50%,-50%) scale(.2)}}
+#emotes{display:none}
+#emoBtn{position:fixed;right:14px;bottom:14px;z-index:20;font-size:24px;line-height:1;padding:8px 10px;background:#000a;border:2px solid #fff4;border-radius:12px}
+#emoBtn:hover{background:#000d;border-color:#ffd93d}
+
+#shop{position:fixed;inset:12px;width:auto;box-sizing:border-box;z-index:12;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;padding:14px;background:#0d0a24f2}
+#shop .sL,#shop .sR{display:flex;flex-direction:column;gap:8px;min-height:0}
+#shop .tabs,#shop .filt,#shop .acts,#shop .chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+#shop .tabs button,#shop .filt button{padding:4px 9px;font-size:13px}#shop .tabs small{opacity:.6;font-weight:400}
+#shop button.on{background:#f1c40f;color:#000}
+#shop .grid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;align-content:start}
+#shop .it{background:#fff1;border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:4px;font-size:13px;border:2px solid transparent;cursor:pointer}
+#shop .it.sel{border-color:#ffd93d}#shop .it.lock b{opacity:.85}#shop .it small{opacity:.7}
+#shop .it span{display:flex;gap:4px;flex-wrap:wrap}#shop .it button{padding:3px 8px;font-size:12px}
+#shop .pvwrap{position:relative;flex:1;min-height:200px;border-radius:10px;overflow:hidden;background:#241f4d}
+#pvc{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+#pvban{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;background:#000a;padding:4px 16px;border-radius:10px;font-size:22px;pointer-events:none;white-space:nowrap}
+#pvban small{font-size:12px;opacity:.8}
+#shop .pvbtns{position:absolute;top:6px;right:6px;display:flex;gap:4px}#shop .pvbtns button{padding:3px 8px;font-size:12px}
+#shop .worn{max-height:24vh;overflow-y:auto}
+#shop .chip{background:#fff1;padding:3px 9px;border-radius:999px;font-size:12px;cursor:pointer}
+#shop .chip i{opacity:.6;font-style:normal;margin-right:3px}#shop .chip.dim{opacity:.45}#shop .chip.lock{color:#ffd93d}#shop .chip.cur{outline:2px solid #fff6}
+#shop .chip u{margin-left:6px;text-decoration:none;opacity:.7}
+@media(max-width:900px){#shop{grid-template-columns:1fr;overflow-y:auto}}

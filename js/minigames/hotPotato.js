@@ -16,6 +16,7 @@ export default {
     const flies = Array.from({ length: 14 }, (_, k) => S.sph(.12, 0xfff08a, 0, 1, 0, { basic: true, seg: 5 }));
     S.anim((dt, tn) => { flames.forEach((f, k) => f.scale.set(.8 + Math.sin(tn * 9 + k) * .2, .9 + Math.sin(tn * 13 + k * 2) * .3, .8 + Math.sin(tn * 9 + k) * .2)); flies.forEach((f, k) => f.position.set(Math.sin(tn * .4 + k * 1.9) * (6 + k % 5), 1.2 + Math.sin(tn * 1.3 + k) * .6, Math.cos(tn * .35 + k * 2.3) * (6 + k % 4))); });
     const potato = new THREE.Mesh(new THREE.IcosahedronGeometry(.45, 0), new THREE.MeshBasicMaterial({ color: 0xff3b30 })); S.root.add(potato);
+    const timer = S.screen(2, .9, 160, 72); let tkT = 0, lastTxt = '';
     let holder = host ? ids[Math.random() * ids.length | 0] : null, fuse = 4 + Math.random() * 4, cool = 1, out = [], time = 0, acc = 0, over = false, lt = 0, prevH = null;
     const pack = () => ({ p: A.pack(), h: holder, f: +fuse.toFixed(1) });
     let snap = pack();
@@ -37,7 +38,7 @@ export default {
         st[holder].alive = false; out.push(holder);
         const al = ids.filter(id => st[id].alive);
         if (al.length <= (ids.length > 1 ? 1 : 0)) { over = true; snap = pack(); ctx.send(snap); return ctx.finish([...al, ...out.reverse()]); }
-        holder = al[Math.random() * al.length | 0]; fuse = 4 + Math.random() * 4; cool = 1.2;
+        holder = al[Math.random() * al.length | 0]; fuse = (4 + Math.random() * 4) * [1.3, 1, .75][ctx.diff ?? 1]; cool = 1.2;
       }
       if (time > 90) { over = true; const al = ids.filter(id => st[id].alive); ctx.finish([...al, ...out.reverse()]); }
     }
@@ -50,6 +51,9 @@ export default {
         if (snap.h !== prevH) { if (prevH) sfx('click'); prevH = snap.h; }
         const g = W.m.get(snap.h)?.g; potato.visible = !!g && !!snap.p[snap.h]?.[2];
         if (g) { potato.position.set(g.position.x, 2.7 + Math.sin(lt * 8) * .1, g.position.z); potato.material.color.set(Math.sin(lt * 25 / (snap.f + 1)) > 0 ? 0xff3b30 : 0xffd93d); }
+        timer.mesh.visible = potato.visible; if (g) timer.mesh.position.set(g.position.x, 3.9, g.position.z);
+        const txt = Math.max(0, snap.f).toFixed(1); if (txt !== lastTxt) { lastTxt = txt; timer.draw((c, w, h) => { c.fillStyle = snap.f < 2 ? '#c0392b' : '#000b'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = 'bold 52px sans-serif'; c.textAlign = 'center'; c.fillText('💣 ' + txt, w / 2, 56); }); }
+        if ((tkT -= dt) <= 0 && potato.visible) { sfx('tick'); tkT = Math.max(.12, Math.min(.7, snap.f * .12)); }      // ticking speeds up as the fuse burns down
         el.innerHTML = `<h3>🥔 ${ctx.esc(ctx.players[snap.h]?.name ?? '')} has it!</h3><div>Alive: ${ids.filter(id => snap.p[id][2]).length}/${ids.length}</div>`;
       },
       onMessage(m, from) { if (A.onInput(m, from)) return; if (!host && m.p) snap = m; },

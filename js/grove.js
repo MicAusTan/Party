@@ -31,7 +31,7 @@ export function nat(x, z) {
 
 // ---------------- paths ----------------
 const RING_PTS = [[2, 27], [-11, 25], [-22, 24], [-31, 16], [-40, 8], [-43, -3], [-36, -10], [-30, -20], [-19, -25], [-8, -24], [-1, -31], [11, -33], [22, -26], [31, -24], [38, -15], [34, -5], [42, 3], [40, 12], [31, 17], [22, 23], [12, 28]];
-function catmull(pts, closed, per = 24) {
+export function catmull(pts, closed, per = 24) {
   const n = pts.length, out = [], segs = closed ? n : n - 1;
   for (let i = 0; i < segs; i++) {
     const p0 = closed ? pts[(i - 1 + n) % n] : pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = closed ? pts[(i + 2) % n] : pts[Math.min(n - 1, i + 2)];
@@ -40,7 +40,7 @@ function catmull(pts, closed, per = 24) {
   if (!closed) out.push(pts[n - 1]);
   return out;
 }
-function resample(dense, count, closed) {          // equal arc-length points (open paths: interior points only)
+export function resample(dense, count, closed) {          // equal arc-length points (open paths: interior points only)
   const pts = closed ? [...dense, dense[0]] : dense, cum = [0];
   for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
   const total = cum[cum.length - 1], out = []; let j = 1;
@@ -61,7 +61,7 @@ export const sp = ringXY.map(([x, z], i) => ({ x, z, y: nat(x, z), type: RT[i], 
 const BEND = 25, GEND = 40, bDense = catmull([ringXY[0], [4, 18], [-1, 9], [-6, 0], [-3, -9], [3, -17], [5, -23], ringXY[BEND]], false, 24), bXY = resample(bDense, 13, false);
 bXY.forEach(([x, z], k) => { const n0 = nat(x, z), over = n0 < .3; sp.push({ x, z, y: over ? .75 : n0, type: BT[k], bridge: over, next: [k < 12 ? N + k + 1 : BEND] }); });
 const pull = ([x, z], k) => { const dx = 6 - x, dz = -6 - z, d = Math.hypot(dx, dz); return [x + dx / d * k, z + dz / d * k]; };
-const gDense = catmull([ringXY[30], pull(ringXY[33], 10), pull(ringXY[37], 5), ringXY[GEND]], false, 24), gXY = resample(gDense, 3, false);
+const gDense = catmull([ringXY[30], pull(ringXY[33], 10), pull(ringXY[37], 9), ringXY[GEND]], false, 24), gXY = resample(gDense, 3, false);
 gXY.forEach(([x, z], k) => sp.push({ x, z, y: nat(x, z), type: GT[k], next: [k < 2 ? N + 14 + k : GEND] }));
 sp[0].next = [1, N]; sp[30].next = [31, N + 13];
 sp[1].label = '🌲 Ring road (safe, long)'; sp[N].label = '🌉 Bridge shortcut (toll 3🪙)'; sp[31].label = '🏔 Ridge trail (the long way)'; sp[N + 13].label = '💎 Crystal Gorge (shortcut, risky)';

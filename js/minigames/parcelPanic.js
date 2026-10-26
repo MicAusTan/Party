@@ -9,9 +9,10 @@ const COLS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6, 0xe67e22, 0x1abc
 const TOTAL = 44, Z0 = .72, Z1 = .98, BX = 10, TIER = [.85, .65, .4], NAMES = ['GOLD', 'SILVER', 'BRONZE', 'Too many dropped'];
 export default {
   coop: true,
+  tiers: [{ n: 'Normal', m: 1, pen: 0, def: true }, { n: 'Hard', m: 1.3, pen: 0, d: 'One more colour, faster belt and parcels.' }, { n: 'Insane', m: 1.7, pen: 0, d: 'Two more colours, much faster.' }],
   name: 'Parcel Panic', desc: 'CO-OP! Every player owns some parcel colours (see the HUD). When a parcel of YOUR colour reaches the green zone, press its number key (1-8) or tap its tile! Mistimed presses jam your hands.',
   create(ctx) {
-    const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, host = ctx.isHost, me = ctx.me, C = n <= 2 ? 4 : n === 3 ? 6 : Math.min(8, n);
+    const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, host = ctx.isHost, me = ctx.me, D = ctx.diff ?? 0, C = Math.min(8, (n <= 2 ? 4 : n === 3 ? 6 : Math.min(8, n)) + D);
     const owner = c => ids[c % n], mine = c => owner(c) === me;
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
 
@@ -51,8 +52,8 @@ export default {
     }
     function step(dt) {
       time += dt; for (const id of ids) lock[id] -= dt;
-      if (spawned < TOTAL && (spawnT -= dt) <= 0) { const f = spawned / TOTAL; spawnT = (1.2 - .6 * f) * (n === 1 ? 1.3 : 1) * (.85 + Math.random() * .3); ps.push({ c: Math.random() * C | 0, x: 0, bt: null }); spawned++; }
-      const v = 1 / (4.6 - 1.2 * Math.min(1, spawned / TOTAL));
+      if (spawned < TOTAL && (spawnT -= dt) <= 0) { const f = spawned / TOTAL; spawnT = (1.2 - .6 * f) * [1, .88, .75][D] * (n === 1 ? 1.3 : 1) * (.85 + Math.random() * .3); ps.push({ c: Math.random() * C | 0, x: 0, bt: null }); spawned++; }
+      const v = [1, 1.12, 1.25][D] / (4.6 - 1.2 * Math.min(1, spawned / TOTAL));
       for (const p of ps) {
         p.x += v * dt;
         const o = owner(p.c); if (ctx.players[o]?.bot && p.x >= Z0 && p.bt == null) { const sk = ctx.skill?.(o) ?? .5; p.bt = Math.random() < .1 + .85 * sk ? time + (.85 - .55 * sk) * (.5 + Math.random() * .9) * .9 : Infinity; }

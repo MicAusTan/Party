@@ -10,6 +10,7 @@ const ROT = [Math.PI / 2, 0, -Math.PI / 2, Math.PI];      // arrow sign rotation
 export default {
   name: 'Simon Says', desc: 'Press the arrow ONLY when Simon says! If the command has no "Simon says", don\'t touch anything. 14 commands.',
   create(ctx) {
+    const LEN = 1.6 * [1.35, 1, .75][ctx.diff ?? 1];                // difficulty: time per step
     const sb = scoreboard(ctx, { timeout: 35, lower: false, bot: s => ({ v: Math.round(jit(mix(3, 13, s), .2)), t: 22 }) }), cmds = Array.from({ length: 14 }, () => ({ says: ctx.rng() < .65, k: ctx.rng() * 4 | 0 }));
     let i = 0, t = 0, resolved = false, score = 0, fb = '', done = false, shown = -1;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, base = {};
@@ -35,7 +36,7 @@ export default {
     ids.forEach((id, k) => { const a = n === 1 ? 0 : (k / (n - 1) - .5) * 2.2, x = SIM[0] + Math.sin(a) * 7.5, z = SIM[1] + Math.cos(a) * 7.5, ry = Math.atan2(SIM[0] - x, SIM[1] - z); base[id] = ry; W.put(id, x, z, ry); });
     S.anim(dt => {
       const c = cmds[Math.min(i, cmds.length - 1)];
-      if (shown !== i) { shown = i; drawSign(c.says); arrow.rotation.z = ROT[c.k]; band.material.emissive.setHex(c.says ? 0xffaa00 : 0); mouth.scale.y = c.says ? 2.4 : .6; sim.position.y = 1.2;
+      if (shown !== i) { shown = i; sfx(c.says ? 'n' + (2 + c.k) : 'lose'); drawSign(c.says); arrow.rotation.z = ROT[c.k]; band.material.emissive.setHex(c.says ? 0xffaa00 : 0); mouth.scale.y = c.says ? 2.4 : .6; sim.position.y = 1.2;
         const [L, R] = arms; L.rotation.z = -.3; R.rotation.z = .3; if (c.k === 0) L.rotation.z = -Math.PI / 2; else if (c.k === 2) R.rotation.z = Math.PI / 2; else if (c.k === 1) R.rotation.z = Math.PI; else { L.rotation.z = -.05; R.rotation.z = .05; } }
       bar.scale.x = done ? .001 : Math.max(.001, 1 - t / LEN); bar.material.color.setHex(t > LEN * .7 ? 0xff5a5f : 0xffd93d);
       sim.position.y = 1.2 + Math.max(0, Math.sin(Math.min(1, t * 6) * Math.PI)) * .25;

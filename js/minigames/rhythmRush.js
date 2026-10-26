@@ -4,27 +4,31 @@ import { stage, fitDist } from './stage.js';
 // Same seeded notes for everyone. Lanes: D F J K (or 1 2 3 4). Perfect = 10, good = 5, stray press = -2.
 // Set: a neon concert highway. Your notes slide down the lanes in 3D; everyone else is the crowd on the sides, hopping when
 // they hit notes, with a live score under each avatar (hits are shared a few times a second -- scoring is still per-client).
-const KEYS = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3, Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }, COLS = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db'], HEX = [0xe74c3c, 0xf1c40f, 0x2ecc71, 0x3498db];
-const V = 14, HZ = 3, LANE = 1.5, laneX = l => (l - 1.5) * LANE;     // note speed (units/s), hit-line z, lane width
+const K4 = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3, Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }, C4 = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db'];
+const K6 = { KeyS: 0, KeyD: 1, KeyF: 2, KeyJ: 3, KeyK: 4, KeyL: 5, Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5 }, C6 = ['#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
+const HZ = 3;     // note speed (units/s), hit-line z, lane width
 export default {
-  name: 'Rhythm Rush', desc: 'Hit the notes as they cross the line! Keys D F J K (or 1 2 3 4). Highest score wins.',
+  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '4 keys: D F J K', def: true }, { n: 'Hard', m: 1.4, pen: 1, d: '4 keys, faster and denser notes.' }, { n: 'Expert', m: 2, pen: 3, d: '6 keys: S D F J K L, fast and dense.' }],
+  name: 'Rhythm Rush', desc: 'Hit the notes as they cross the line! Keys D F J K (or 1 2 3 4); on Expert S D F J K L (or 1-6). Highest score wins.',
   create(ctx) {
+    const D = ctx.diff ?? 0, L = D === 2 ? 6 : 4, V = [14, 16.5, 17.5][D], LANE = L === 6 ? 1.25 : 1.5, laneX = l => (l - (L - 1) / 2) * LANE;           // tier: note speed, lane count
+    const KEYS = L === 6 ? K6 : K4, COLS = L === 6 ? C6 : C4, HEX = COLS.map(c => parseInt(c.slice(1), 16)), LBL = L === 6 ? 'SDFJKL' : 'DFJK';
     const sb = scoreboard(ctx, { timeout: 40, lower: false, bot: s => { const n = notes.length, hit = mix(.45, .95, s), perf = mix(.2, .75, s); return { v: Math.round(n * hit * (5 + 5 * perf) - n * (1 - hit) * 1.5), t: endT }; } }), notes = []; let t = 2;
-    while (t < 17) { notes.push({ t, l: ctx.rng() * 4 | 0, hit: 0 }); t += .35 + ctx.rng() * .4; }
-    const endT = notes[notes.length - 1].t + 1; let time = 0, score = 0, done = false, fb = '', fl = [0, 0, 0, 0], pendQ = null, sendT = 0, tt = 0;
+    while (t < 17) { notes.push({ t, l: ctx.rng() * L | 0, hit: 0 }); t += [.35, .28, .27][D] + ctx.rng() * [.4, .33, .3][D]; }
+    const endT = notes[notes.length - 1].t + 1; let time = 0, score = 0, done = false, fb = '', fl = Array(L).fill(0), pendQ = null, sendT = 0, tt = 0;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, sc = {}, dirty = {}; ids.forEach(id => { sc[id] = 0; dirty[id] = true; });
 
     // ---------- the set ----------
     const dist = fitDist(W, 8.2, 10);
     const S = stage(ctx, { sky: 0x07050f, fog: { color: 0x07050f, near: 28, far: 62 }, light: .75, sun: { intensity: .5, pos: [0, 10, 5] }, cam: { pos: [0, dist * .58, dist], look: [0, .4, -6], fov: 58 }, camFrom: [0, 12, 18], camT: 1.4 });
     S.box(70, .5, 100, 0x120c24, 0, -.5, -28);
-    S.box(LANE * 4 + .4, .1, 72, 0x1a1530, 0, 0, -30);
-    for (let l = 0; l < 4; l++) S.box(LANE - .12, .02, 72, 0x241d45, laneX(l), .1, -30);
-    for (let l = 0; l <= 4; l++) S.box(.06, .05, 72, 0x6b5cff, (l - 2) * LANE, .1, -30, { em: 0x3a2f99 });
-    S.box(LANE * 4 + .4, .08, .18, 0xffffff, 0, .12, HZ, { basic: true });
-    const flash = [0, 1, 2, 3].map(l => { S.cyl(.55, .55, .05, HEX[l], laneX(l), .12, HZ, { basic: true, op: .55 }); return S.box(LANE - .12, .03, 7, HEX[l], laneX(l), .13, HZ - 3.2, { basic: true, op: 0 }); });
-    const keys = S.screen(LANE * 4, .8, 512, 100); keys.mesh.rotation.x = -Math.PI / 2; keys.mesh.position.set(0, .05, HZ + 1.3);
-    keys.draw((c, w, h) => { c.font = 'bold 60px sans-serif'; c.textAlign = 'center'; [0, 1, 2, 3].forEach(l => { c.fillStyle = COLS[l]; c.fillText('DFJK'[l], w / 8 + l * w / 4, 70); }); });
+    S.box(LANE * L + .4, .1, 72, 0x1a1530, 0, 0, -30);
+    for (let l = 0; l < L; l++) S.box(LANE - .12, .02, 72, 0x241d45, laneX(l), .1, -30);
+    for (let l = 0; l <= L; l++) S.box(.06, .05, 72, 0x6b5cff, (l - L / 2) * LANE, .1, -30, { em: 0x3a2f99 });
+    S.box(LANE * L + .4, .08, .18, 0xffffff, 0, .12, HZ, { basic: true });
+    const flash = Array.from({ length: L }, (_, l) => { S.cyl(.55, .55, .05, HEX[l], laneX(l), .12, HZ, { basic: true, op: .55 }); return S.box(LANE - .12, .03, 7, HEX[l], laneX(l), .13, HZ - 3.2, { basic: true, op: 0 }); });
+    const keys = S.screen(LANE * L, .8, 512, 100); keys.mesh.rotation.x = -Math.PI / 2; keys.mesh.position.set(0, .05, HZ + 1.3);
+    keys.draw((c, w, h) => { c.font = `bold ${L === 6 ? 50 : 60}px sans-serif`; c.textAlign = 'center'; for (let l = 0; l < L; l++) { c.fillStyle = COLS[l]; c.fillText(LBL[l], w / (2 * L) + l * w / L, 70); } });
     const meshes = notes.map(nt => S.box(LANE - .35, .28, .7, HEX[nt.l], laneX(nt.l), .15, -99, { em: (HEX[nt.l] >> 1) & 0x7f7f7f }));
     for (let z = -2; z > -50; z -= 8) for (const sd of [-1, 1]) { S.cyl(.18, .22, 3.2, 0x2a2250, sd * 3.7, 0, z, { seg: 8 }); S.sph(.32, HEX[(z / -8 | 0) % 4], sd * 3.7, 3.4, z, { basic: true }); }   // light pylons
     const eq = []; for (let i = 0; i < 15; i++) eq.push(S.box(1, 1, 1, HEX[i % 4], (i - 7) * 1.5, 0, -50, { em: (HEX[i % 4] >> 1) & 0x7f7f7f }));   // equalizer on the horizon

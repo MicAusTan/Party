@@ -7,15 +7,20 @@ import { stage } from './stage.js';
 // front looking up at the sky; others' pops (and bomb mishaps) are shared a few times a second, with a live score over each head.
 const DUR = 15, RISE = .03;
 export default {
-  name: 'Balloon Pop', desc: 'Pop balloons for +1 - but DON\'T click the black bombs (-3)! 15 seconds.',
+  tiers: [{ n: 'Normal', m: 1, pen: 0, d: 'Pop balloons, avoid bombs.' }, { n: 'Hard', m: 1.5, pen: 2, d: 'More balloons, plus gold (+3) and spiky (-1) ones.' }],
+  name: 'Balloon Pop', desc: 'Pop balloons for +1 - but DON\'T click the black bombs (-3)! 15 seconds. (Hard: gold balloons are +3, spiky dark-red ones -1.)',
   create(ctx) {
-    const sb = scoreboard(ctx, { timeout: 25, lower: false, bot: s => ({ v: Math.round(jit(mix(8, 30, s), .18)), t: DUR }) });
-    const bs = Array.from({ length: 80 }, (_, i) => ({ ts: i * .19, x: 25 + ctx.rng() * 410, sp: 70 + ctx.rng() * 70, bomb: ctx.rng() < .2, c: new THREE.Color().setHSL(ctx.rng(), .8, .55), dead: false, i, y: 0 }));
+    const HARD = ctx.diff === 1, sb = scoreboard(ctx, { timeout: 25, lower: false, bot: s => ({ v: Math.round(jit(mix(8, 30, s), .18) * (HARD ? 1.2 : 1)), t: DUR }) });
+    const K = ctx.team ? 1.5 : 1;       // team version: a wider sky with more balloons
+    const bs = Array.from({ length: Math.round((HARD ? 115 : 80) * K) }, (_, i) => {
+      const x = 25 + ctx.rng() * 410, sp = 70 + ctx.rng() * 70, r = ctx.rng(), pB = HARD ? .2 : .2, v = r < pB ? -3 : HARD && r < pB + .1 ? 3 : HARD && r < pB + .2 ? -1 : 1;       // hard: gold +3 and spiky -1 balloons too
+      return { ts: i * (HARD ? .135 : .19) / K, x, sp: v === 3 ? sp * 1.25 : sp, v, bomb: v < 0, c: v === 3 ? new THREE.Color(0xffd23f) : new THREE.Color().setHSL(ctx.rng(), .8, .55), dead: false, i, y: 0 };
+    });
     let time = 0, score = 0, done = false, pend = null, sendT = 0, tt = 0;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, sc = {}, dirty = {}; ids.forEach(id => { sc[id] = 0; dirty[id] = true; });
 
     // ---------- the set ----------
-    const S = stage(ctx, { sky: 0x8fd3ff, fog: { color: 0x8fd3ff, near: 40, far: 110 }, light: 1.2, sun: { intensity: 1.2, pos: [6, 16, 8] }, cam: { pos: [0, 2.6, 16], look: [0, 6, 0] }, camFrom: [0, 1.5, 26], camT: 1.4 });
+    const S = stage(ctx, { sky: 0x8fd3ff, fog: { color: 0x8fd3ff, near: 40, far: 110 }, light: 1.2, sun: { intensity: 1.2, pos: [6, 16, 8] }, cam: { pos: [0, 2.6 + (K - 1) * 3, 16 * K], look: [0, 6, 0] }, camFrom: [0, 1.5, 26 * K], camT: 1.4 });
     S.box(160, .5, 120, 0x6fbf4a, 0, -.5, -40);
     for (let i = 0; i < 6; i++) S.cone(9 + i % 3 * 3, 6 + i % 4 * 2, i % 2 ? 0x4f9a45 : 0x5fae4c, -50 + i * 20, 0, -60, { seg: 7 });
     for (let i = 0; i < 4; i++) { const x = -22 + i * 15, c = [0xe74c3c, 0x3498db, 0xf1c40f, 0x9b59b6][i]; S.cyl(2.6, 2.6, 2.4, 0xfff4e0, x, 0, -22, { seg: 12 }); S.cone(3.2, 2.6, c, x, 2.4, -22, { seg: 12 }); S.box(1.2, 1.6, .1, 0x553311, x, 0, -19.4); }   // tents
@@ -28,11 +33,11 @@ export default {
     const sphG = new THREE.SphereGeometry(1, 14, 10), strG = new THREE.CylinderGeometry(.015, .015, 1.4, 4), knotG = new THREE.ConeGeometry(.18, .3, 6);
     bs.forEach(b => {
       const g = new THREE.Group(); g.visible = false; S.root.add(g);
-      const body = new THREE.Mesh(sphG, new THREE.MeshStandardMaterial({ color: b.bomb ? 0x1a1a1f : b.c, flatShading: true })); body.scale.set(.72, .92, .72); g.add(body);
+      const body = new THREE.Mesh(sphG, new THREE.MeshStandardMaterial({ color: b.bomb ? (b.v === -1 ? 0x7a1030 : 0x1a1a1f) : b.c, flatShading: true })); body.scale.set(.72, .92, .72); g.add(body);
       const knot = new THREE.Mesh(knotG, body.material); knot.position.y = -.98; knot.rotation.x = Math.PI; g.add(knot);
       if (b.bomb) { const fuse = S.cyl(.04, .04, .45, 0x886644, 0, .85, 0, { p: g, seg: 5 }); b.spark = S.sph(.12, 0xff9f1a, 0, 1.38, 0, { p: g, basic: true, seg: 6 }); }
       else { const st = new THREE.Mesh(strG, new THREE.MeshBasicMaterial({ color: 0xffffff })); st.position.y = -1.8; g.add(st); }
-      b.g = g; b.body = body; b.z = ((b.i * 37) % 7 - 3) * .7 - 1; b.bx = (b.x - 25) / 410 * 16 - 8;
+      b.g = g; b.body = body; b.z = ((b.i * 37) % 7 - 3) * .7 - 1; b.bx = ((b.x - 25) / 410 * 16 - 8) * K;
     });
     const lab = {};
     ids.forEach((id, k) => { const x = (k - (n - 1) / 2) * Math.min(2.3, 15 / n); W.put(id, x, 3.2, Math.PI); const l = S.screen(1.7, .62, 256, 92); l.mesh.position.set(x, 3.4, 3.2); lab[id] = l; });
@@ -57,7 +62,7 @@ export default {
       S.root.updateMatrixWorld(true); W.cam.updateMatrixWorld(); ray.setFromCamera(ndc, W.cam);
       const live = bs.filter(b => !b.dead && b.g.visible), hits = ray.intersectObjects(live.map(b => b.body), false); if (!hits.length) return;
       const b = live.find(x => x.body === hits[0].object); b.dead = true; b.g.visible = false;
-      score += b.bomb ? -3 : 1; sc[me] = score; dirty[me] = true; sfx(b.bomb ? 'hit' : 'click'); pend = b.bomb ? 1 : 0;
+      score += b.v; sc[me] = score; dirty[me] = true; sfx(b.bomb ? 'hit' : 'click'); pend = b.bomb ? 1 : 0;
       W.burst(b.g.position.x, b.g.position.y, b.g.position.z, b.bomb ? '#ff9f1a' : '#' + b.c.getHexString(), b.bomb ? 18 : 10);
       if (b.bomb) { W.shake(.2, .25); W.emote(me, 'sad'); W.popIcon(me, '💥'); } else W.hop(me, .35);
     };
@@ -65,6 +70,7 @@ export default {
     const apply = ev => { if (!(ev.id in sc)) return; sc[ev.id] = ev.sc; dirty[ev.id] = true; if (ev.b) { W.emote(ev.id, 'sad'); W.popIcon(ev.id, '💥'); } else W.hop(ev.id, .35); };
     return {
       update(dt) {
+        for (const id of ids) if (ctx.players[id]?.bot) { const v = Math.round(sb.get(id)); if (v !== sc[id]) { sc[id] = v; dirty[id] = true; } }   // bots' live score from the shared scoreboard
         sb.prog(score), sb.tick(dt); time += dt; if (!done && time >= DUR) { done = true; sb.report(score); W.emote(me, 'cheer'); }
         if (pend !== null && (sendT -= dt) <= 0) { sendT = .12; ctx.send({ k: 'p', id: me, sc: score, b: pend }); pend = null; }      // throttled: coalesces fast clicking
         s.textContent = done ? `Final: ${score} - waiting for others...` : `${Math.ceil(DUR - time)}s   Score: ${score}`;

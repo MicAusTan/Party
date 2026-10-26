@@ -12,7 +12,10 @@ function tone(f, d, type = 'square', v = .07, t0 = 0, slide = 0) {
     o.connect(g).connect(c.destination); o.start(t); o.stop(t + d);
   } catch {}
 }
+const N = [262, 330, 392, 440, 523, 659, 784, 880];
 const S = {
+  shove: () => tone(220, .14, 'sawtooth', .07, 0, 2.2),
+  ...Object.fromEntries(N.map((f, i) => ['n' + i, () => tone(f, .22, 'triangle', .12)])),       // n0..n7: a rising scale, for memory / pattern games
   click: () => tone(600, .05),
   tick: () => tone(440, .12),
   go: () => tone(880, .3),

@@ -7,9 +7,10 @@ import { stage } from './stage.js';
 // everyone else who stopped are revealed -- but only AFTER you've stopped yourself, so nobody can peek at their timing.
 const R = 4.6, TAU = Math.PI * 2, ang = ts => (ts % 10) / 10 * TAU;
 export default {
-  name: 'Stop the Clock', desc: 'A timer starts, then vanishes after 3 seconds. Press SPACE (or click) when you think it hits exactly 10.00!',
+  name: 'Stop the Clock', desc: 'A timer starts, then vanishes after a few seconds (shorter on higher difficulty). Press SPACE (or click) when you think it hits exactly 10.00!',
   create(ctx) {
-    const sb = scoreboard(ctx, { timeout: 20, bot: s => ({ v: Math.round(rnd(0, mix(1100, 120, s))), t: rnd(10, 11.5) }) }), W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me;
+    const HIDE = [4, 3, 2][ctx.diff ?? 1];                         // difficulty: seconds the timer stays visible
+    const sb = scoreboard(ctx, { timeout: 20, grace: 3.5, bot: s => ({ v: Math.round(rnd(0, mix(1100, 120, s))), t: rnd(10, 11.5) }) }), W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me;
     let t = 0, stopped = false, stopT = 0, drawn = '', pegN = 0; const pend = [], pegs = [];
     const S = stage(ctx, { sky: 0x241f4d, fog: { color: 0x241f4d, near: 30, far: 75 }, light: .9, sun: { color: 0xffe8c0, intensity: .9, pos: [-4, 14, 8] }, cam: { pos: [0, 13.5, 11], look: [0, 0, .8] }, camFrom: [0, 24, 20], camT: 1.4 });
     S.cyl(46, 46, .5, 0x2c2a55, 0, -.5, 0, { seg: 48 }); S.cyl(9.4, 9.4, .1, 0x3a3870, 0, 0, 0, { seg: 40 }); S.cyl(R + .5, R + .5, .25, 0x15142b, 0, 0, 0, { seg: 40 });
@@ -43,16 +44,16 @@ export default {
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
 
     S.anim((dt, tt) => {
-      hand.visible = stopped || t < 3; hand.rotation.y = -ang(stopped ? stopT : t); handBar.material.color.setHex(stopped ? 0xffd93d : 0xff5a5f);
+      hand.visible = stopped || t < HIDE; hand.rotation.y = -ang(stopped ? stopT : t); handBar.material.color.setHex(stopped ? 0xffd93d : 0xff5a5f);
       for (const p of pegs) { p.userData.t = Math.min(1, p.userData.t + dt * 4); const u = p.userData.t; p.scale.setScalar(u < 1 ? 1 + 2.7 * Math.pow(u - 1, 3) + 1.7 * Math.pow(u - 1, 2) : 1); }
-      const main = stopped ? stopT.toFixed(2) : t < 3 ? t.toFixed(2) : '?.??', sub = stopped ? `off by ${Math.round(Math.abs(stopT - 10) * 1000)}ms` : 'target 10.00', key2 = main + sub;
+      const main = stopped ? stopT.toFixed(2) : t < HIDE ? t.toFixed(2) : '?.??', sub = stopped ? `off by ${Math.round(Math.abs(stopT - 10) * 1000)}ms` : 'target 10.00', key2 = main + sub;
       if (key2 !== drawn) { drawn = key2; dig.draw((cc, w, h) => { cc.fillStyle = '#000b'; cc.fillRect(0, 0, w, h); cc.textAlign = 'center'; cc.fillStyle = stopped ? '#ffd93d' : '#7cf08a'; cc.font = 'bold 58px monospace'; cc.fillText(main, w / 2, 56); cc.fillStyle = '#fff'; cc.font = 'bold 26px sans-serif'; cc.fillText(sub, w / 2, 86); }); }
     });
     return {
       update(dt) {
         t += dt; sb.prog(0), sb.tick(dt);
         if (!stopped && t >= 15) stop(t, true);
-        el.innerHTML = `<h2>${stopped ? stopT.toFixed(2) : t < 3 ? t.toFixed(2) : '?.??'}</h2>` + (stopped ? `<div>Off by ${Math.round(Math.abs(stopT - 10) * 1000)}ms. Waiting for others...</div>` : '<div>Target: 10.00</div>');
+        el.innerHTML = `<h2>${stopped ? stopT.toFixed(2) : t < HIDE ? t.toFixed(2) : '?.??'}</h2>` + (stopped ? `<div>Off by ${Math.round(Math.abs(stopT - 10) * 1000)}ms. Waiting for others...</div>` : '<div>Target: 10.00</div>');
       },
       endNow() { sb.endNow(); },
       onMessage(m, from) {

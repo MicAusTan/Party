@@ -2,13 +2,15 @@ import * as THREE from 'three';
 import { sfx } from '../sfx.js';
 import { scoreboard, jit, mix } from './util.js';
 import { stage, fitDist } from './stage.js';
-// Click the numbers 1 to 16 in order, as fast as you can! A wrong click costs 1 second.
+// Click the numbers in order (1 up to the last one), as fast as you can! A wrong click costs 1 second.
 // Set: a giant game-show puzzle wall. The 16 tiles are real 3D (you click them with a ray from the camera); cleared tiles sink
 // into the wall. Everyone else stands at the sides watching, with a live "next number" over their head (shared on every click).
 export default {
-  name: 'Number Sort', desc: 'Click the numbers 1 to 16 in order, as fast as you can! A wrong click costs 1 second.',
+  tiers: [{ n: '4x4', m: 1, pen: 0, d: 'Numbers 1-16.', def: true }, { n: '5x5', m: 1.4, pen: 1, d: 'Numbers 1-25.' }, { n: '6x6', m: 2, pen: 2, d: 'Numbers 1-36.' }],
+  name: 'Number Sort', desc: 'Click the numbers in order (1 up to the last tile), as fast as you can! A wrong click costs 1 second.',
   create(ctx) {
-    const sb = scoreboard(ctx, { timeout: 70, bot: s => { const T = jit(mix(42, 17, s), .15); return { v: Math.round(T * 1000), t: T }; } }), nums = Array.from({ length: 16 }, (_, i) => i + 1);
+    const G = [4, 5, 6][ctx.diff ?? 0], TOT = G * G, K = 4 / G, SP = 1.95 * K;                // grid size
+    const sb = scoreboard(ctx, { timeout: [70, 110, 160][ctx.diff ?? 0], bot: s => { const T = jit(mix(42, 17, s), .15) * TOT / 16; return { v: Math.round(T * 1000), t: T }; } }), nums = Array.from({ length: TOT }, (_, i) => i + 1);
     for (let i = 15; i > 0; i--) { const j = ctx.rng() * (i + 1) | 0; [nums[i], nums[j]] = [nums[j], nums[i]]; }
     let next = 1, pen = 0, time = 0, done = false, lastT = '', shownNext = 0;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, st = {}, dirty = {}; ids.forEach(id => { st[id] = { nx: 1, pen: 0 }; dirty[id] = true; });
@@ -20,14 +22,14 @@ export default {
     S.box(70, .5, 36, 0x20264d, 0, -.5, -6); S.box(9, 9, .5, 0x1d2750, 0, .8, -.2); S.box(9.4, .25, .7, 0xffd93d, 0, 9.8, -.1); S.box(9.4, .25, .7, 0xffd93d, 0, .6, -.1);
     [-1, 1].forEach(sd => S.box(.25, 9.2, .7, 0xffd93d, sd * 4.6, .7, -.1));
     const tiles = nums.map((nn, idx) => {
-      const col = idx % 4, row = idx / 4 | 0, x = (col - 1.5) * 1.95, y = 8.5 - row * 1.95;
-      const box = S.box(1.7, 1.7, .45, (col + row) % 2 ? 0x3b5bdb : 0x4c6ef5, x, y - .85, .3);
-      const num = S.screen(1.5, 1.5, 128, 128); num.mesh.position.set(x, y, .3 + .23); num.mesh.material.transparent = true;
+      const col = idx % G, row = idx / G | 0, x = (col - (G - 1) / 2) * SP, y = 5.575 + ((G - 1) / 2 - row) * SP;
+      const box = S.box(1.7 * K, 1.7 * K, .45, (col + row) % 2 ? 0x3b5bdb : 0x4c6ef5, x, y - .85 * K, .3);
+      const num = S.screen(1.5 * K, 1.5 * K, 128, 128); num.mesh.position.set(x, y, .3 + .27); num.mesh.material.transparent = true; num.mesh.material.depthWrite = false; num.mesh.renderOrder = 3;
       num.draw((c, w, h) => { c.fillStyle = '#fff'; c.font = 'bold 84px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(nn), w / 2, h / 2 + 6); });
       box.userData.n = nn; return { n: nn, box, num, z0: box.position.z, ts: 0 };
     });
     const banner = S.screen(4.4, 1.1, 256, 64); banner.mesh.position.set(0, 11.1, 0);
-    const drawBanner = v => banner.draw((c, w, h) => { c.fillStyle = '#000a'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffd93d'; c.font = 'bold 44px sans-serif'; c.textAlign = 'center'; c.fillText(v > 16 ? 'DONE!' : 'NEXT: ' + v, w / 2, 46); });
+    const drawBanner = v => banner.draw((c, w, h) => { c.fillStyle = '#000a'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffd93d'; c.font = 'bold 44px sans-serif'; c.textAlign = 'center'; c.fillText(v > TOT ? 'DONE!' : 'NEXT: ' + v, w / 2, 46); });
     const lab = {}, sideOf = i => i % 2 ? 1 : -1;
     ids.forEach((id, i) => { const sd = sideOf(i), z = 1.4 - (i >> 1) * 2.6; W.put(id, sd * 8.2, z, sd < 0 ? Math.PI / 2 : -Math.PI / 2); const l = S.screen(2, .7, 256, 90); l.mesh.position.set(sd * 8.2, 3.3, z); lab[id] = l; });
     const drawLab = id => lab[id].draw((c, w, h) => { c.fillStyle = '#000a'; c.fillRect(0, 0, w, h); c.textAlign = 'center'; c.fillStyle = ctx.players[id].color; c.font = 'bold 28px sans-serif'; c.fillText(String(ctx.players[id].name).slice(0, 12), w / 2, 32); c.fillStyle = '#fff'; c.font = 'bold 34px sans-serif'; c.fillText(st[id].nx > 16 ? 'DONE!' : 'next ' + st[id].nx + (st[id].pen ? '  x' + st[id].pen : ''), w / 2, 72); });
@@ -50,13 +52,13 @@ export default {
       S.root.updateMatrixWorld(true); W.cam.updateMatrixWorld(); ray.setFromCamera(ndc, W.cam);
       const live = tiles.filter(x => x.n >= next), hit = ray.intersectObjects(live.map(x => x.box), false)[0]; if (!hit) return;
       const nn = hit.object.userData.n, tile = tiles.find(x => x.n === nn);
-      if (nn === next) { next++; sfx('click'); W.hop(me, .35); W.burst(tile.box.position.x, tile.box.position.y + .85, 1, '#ffd93d', 8); emit(); if (next > 16) { done = true; sb.report(Math.round(time * 1000 + pen * 1000)); W.emote(me, 'cheer'); } }
+      if (nn === next) { next++; sfx('click'); W.hop(me, .35); W.burst(tile.box.position.x, tile.box.position.y + .85, 1, '#ffd93d', 8); emit(); if (next > TOT) { done = true; sb.report(Math.round(time * 1000 + pen * 1000)); W.emote(me, 'cheer'); } }
       else { pen++; sfx('lose'); W.shake(.1, .15); tile.box.material.emissive.setHex(0xaa0000); S.after(.25, () => tile.box.material.emissive.setHex(0)); emit(); }
     };
     addEventListener('pointerdown', onDown);
     return {
       update(dt) {
-        sb.prog((next - 1) / 16), sb.tick(dt); if (!done) time += dt;
+        sb.prog((next - 1) / TOT), sb.tick(dt); if (!done) time += dt;
         const t = done ? `Done! ${(time + pen).toFixed(1)}s - waiting for others...` : `${time.toFixed(1)}s   Next: ${next}   Penalty: ${pen}s`; if (t !== lastT) { tl.textContent = t; lastT = t; }
       },
       endNow() { sb.endNow(); },

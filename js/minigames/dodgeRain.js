@@ -4,9 +4,10 @@ import { arena } from './arena.js';
 import { topDown } from './kit.js';
 // Set: a desert canyon plateau at dusk. The red circles are real shadows: each boulder visibly falls from the sky and lands (dust + shake).
 export default {
-  name: 'Dodge Rain', desc: 'Red circles mark where boulders land. Stay out of them! Last one standing wins. WASD to move.',
+  tiers: [{ n: 'Normal', m: 1, pen: 0 }, { n: 'Heavy Start', m: 1.3, pen: 1, d: 'Boulders fall much faster from the start.' }, { n: 'Hunted', m: 1.7, pen: 2, d: 'Boulders mostly drop right where players stand (a little off).' }],
+  name: 'Dodge Rain', desc: 'Red circles mark where boulders land. Stay out of them! Last one standing wins. WASD to move. Hold E near someone to grab and slow them (but they drag YOU along).',
   create(ctx) {
-    const W = ctx.world, A = arena(ctx, { set: { ...topDown(W, 13.5, 21), sky: 0xf0a868, fog: { color: 0xf0a868, near: 50, far: 120 }, light: 1.05, sun: { color: 0xffc080, intensity: 1.25, pos: [-8, 14, 6] } } }), { ids, st, S } = A, host = ctx.isHost, rings = [], was = {}, boul = [], bGeo = new THREE.IcosahedronGeometry(1.1, 1); let prevKeys = new Set();
+    const W = ctx.world, A = arena(ctx, { grab: true, set: { ...topDown(W, 13.5, 21), sky: 0xf0a868, fog: { color: 0xf0a868, near: 50, far: 120 }, light: 1.05, sun: { color: 0xffc080, intensity: 1.25, pos: [-8, 14, 6] } } }), { ids, st, S } = A, host = ctx.isHost, rings = [], was = {}, boul = [], bGeo = new THREE.IcosahedronGeometry(1.1, 1); let prevKeys = new Set();
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
     S.cyl(12.4, 12.9, .5, 0xb7835a, 0, -.5, 0, { seg: 28 }); S.cyl(30, 30, .5, 0x9c6b46, 0, -1.4, 0, { seg: 28 });
     for (let k = 0; k < 18; k++) { const a = k / 18 * 6.283, r = 21 + k % 3 * 3; S.box(5 + k % 3 * 2, 7 + k % 5 * 3, 4 + k % 2 * 2, k % 2 ? 0xc0693f : 0xa9562f, Math.sin(a) * r, -1, Math.cos(a) * r, { ry: -a }); }    // canyon walls
@@ -19,9 +20,9 @@ export default {
       A.bots(dt, (id, s, sk) => { let fx = 0, fz = 0, hit = false; const m = 1.2 + 2.4 * sk; for (const h of hz) { const dx = s.x - h.x, dz = s.z - h.z, d = Math.hypot(dx, dz); if (d < h.r + m) { hit = true; const w = (h.r + m - d) / (h.r + m); fx += dx / (d || 1) * w; fz += dz / (d || 1) * w; } } if (hit) { const r = Math.hypot(s.x, s.z); if (r > 9.5) { fx -= s.x / r * .8; fz -= s.z / r * .8; } return [fx, fz]; } return Math.hypot(s.x, s.z) > 8 ? [-s.x, -s.z] : null; });
       A.move(dt);
       if ((spawnT -= dt) <= 0) {
-        spawnT = Math.max(.25, .9 - time * .015);
-        const al = ids.filter(id => st[id].alive), tg = al.length && Math.random() < .5 ? st[al[Math.random() * al.length | 0]] : null, a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * 10.5;
-        hz.push({ x: tg ? tg.x + (Math.random() - .5) * 3 : Math.sin(a) * r, z: tg ? tg.z + (Math.random() - .5) * 3 : Math.cos(a) * r, t: 1.2, r: 1.8 });
+        spawnT = [Math.max(.25, .9 - time * .015), Math.max(.22, .5 - time * .012), Math.max(.3, .85 - time * .015)][ctx.diff ?? 0];
+        const al = ids.filter(id => st[id].alive), tg = al.length && Math.random() < [.5, .5, .92][ctx.diff ?? 0] ? st[al[Math.random() * al.length | 0]] : null, a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * 10.5;
+        hz.push({ x: tg ? tg.x + (Math.random() - .5) * [3, 3, 2][ctx.diff ?? 0] : Math.sin(a) * r, z: tg ? tg.z + (Math.random() - .5) * [3, 3, 2][ctx.diff ?? 0] : Math.cos(a) * r, t: 1.2, r: 1.8 });
       }
       hz = hz.filter(h => {
         if ((h.t -= dt) > 0) return true;

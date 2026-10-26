@@ -7,12 +7,12 @@ import { stage, fitDist } from './stage.js';
 const R = 140, BW = 120, LH = 22, U = 40, LT = LH / U, D = 3, LC = 7;
 const Y = i => .4 + i * LT, hue = i => new THREE.Color().setHSL((i * 28 % 360) / 360, .7, .55).getHex();
 export default {
-  coop: true,
-  name: 'Tower Stack', desc: 'CO-OP! Take turns dropping the swinging block (SPACE / click) onto the tower. Build high together - everyone shares the reward!',
+  name: 'Tower Stack', desc: 'Take turns dropping the swinging block (SPACE / click) onto a shared tower. Miss the tower and YOU are out - last builder standing wins. Perfect drops keep the block wide!',
   create(ctx) {
     const ids = Object.keys(ctx.players), host = ctx.isHost, W = ctx.world, n = ids.length;
-    let layers = [{ x: 0, w: BW }], ph = 0, turn = 0, pos = 0, time = 0, acc = 0, over = false, msg = '', tt = 0;
-    const whose = () => ids[turn % n];
+    let elim = [], score = {}, layers = [{ x: 0, w: BW }], ph = 0, turn = 0, pos = 0, time = 0, acc = 0, over = false, msg = '', tt = 0;
+    ids.forEach(id => score[id] = 0);
+    const whose = () => { for (let k = 0; k < n; k++) { const id = ids[(turn + k) % n]; if (!elim.includes(id)) return id; } return ids[turn % n]; };      // skips eliminated players
     const el = document.createElement('div'); el.className = 'mg'; el.innerHTML = '<h3 id="s"></h3>'; ctx.hud.append(el); const s = el.querySelector('#s');
 
     // ---------- the set ----------
@@ -43,21 +43,26 @@ export default {
       if (who) { W.lean(who, .45); S.after(.2, () => W.lean(who, 0)); if (!ok) W.emote(who, 'sad'); }
     };
     const startEnd = () => {
-      if (ended) return; ended = true; const h = layers.length - 1, rk = h >= 12 ? 0 : h >= 7 ? 1 : h >= 3 ? 2 : 3;
-      ids.forEach(id => W.emote(id, rk <= 1 ? 'cheer' : rk === 2 ? 'wiggle' : 'sad')); if (rk <= 1) W.burst(0, Y(layers.length) + 1, 0, '#ffd93d', 30);
+      if (ended) return; ended = true; ids.forEach(id => W.emote(id, elim.includes(id) ? 'sad' : 'cheer')); W.burst(0, Y(layers.length) + 1, 0, '#ffd93d', 30);
       const top = Y(layers.length); W.setCam([0, top * .5 + 3, dist + top * .9], [0, top * .5, 0], 1.8);       // pull back to show the finished tower
     };
-    const end = (miss = false) => {
-      if (over) return; over = true; const h = layers.length - 1, rk = h >= 12 ? 0 : h >= 7 ? 1 : h >= 3 ? 2 : 3;
-      ctx.send({ L: layers, t: turn, x: pos, end: 1, miss: miss ? 1 : 0, msg }); startEnd();
-      S.after(2.6, () => ctx.finish([...ids], ids.map(() => rk)));       // let everyone see the result on the site before the podium
+    const end = () => {
+      if (over) return; over = true;
+      ctx.send({ L: layers, t: turn, x: pos, end: 1, msg, el: elim }); startEnd();
+      const alive = ids.filter(id => !elim.includes(id)).sort((a, b) => score[b] - score[a]);
+      S.after(2.6, () => ctx.finish([...alive, ...[...elim].reverse()]));       // let everyone see the result on the site before the podium
     };
+    let turnT = 0;
     const drop = () => {
+      turnT = 0;
       const top = layers[layers.length - 1], dx = pos - top.x, ov = top.w - Math.abs(dx), who = whose();
-      if (Math.abs(dx) < 6) { layers.push({ x: top.x, w: top.w }); msg = 'PERFECT!'; sfx('star'); onDrop(top, pos, true, who); }
-      else if (ov < 8) { msg = 'Missed!'; sfx('lose'); onDrop(top, pos, false, who); return end(true); }
-      else { layers.push({ x: top.x + dx / 2, w: ov }); msg = 'Nice'; sfx('click'); onDrop(top, pos, true, who); }
-      turn++; ctx.send({ L: layers, t: turn, x: pos, msg }); if (layers.length > 20) end();
+      if (Math.abs(dx) < 6) { layers.push({ x: top.x, w: top.w }); score[who] += 2; msg = 'PERFECT!'; sfx('star'); onDrop(top, pos, true, who); }
+      else if (ov < 8) {
+        msg = `${ctx.players[who]?.name} missed - OUT!`; sfx('lose'); onDrop(top, pos, false, who); elim.push(who); turn++;
+        if (ids.length - elim.length <= (n > 1 ? 1 : 0)) return end(); return void ctx.send({ L: layers, t: turn, x: pos, msg, el: elim });
+      }
+      else { layers.push({ x: top.x + dx / 2, w: ov }); score[who]++; msg = 'Nice'; sfx('click'); onDrop(top, pos, true, who); }
+      turn++; ctx.send({ L: layers, t: turn, x: pos, msg, el: elim }); if (layers.length > 24) end();
     };
     const press = () => { if (over || whose() !== ctx.me) return; host ? drop() : ctx.send({ d: 1 }); };
     const key = e => { if (e.code === 'Space' && !e.repeat) press(); };
@@ -80,17 +85,17 @@ export default {
     });
     return {
       update(dt) {
-        time += dt;
+        time += dt; if (host && !over && !ctx.players[whose()]?.bot && (turnT += dt) > 7) drop();      // AFK players still have to drop
         if (host && !over && ctx.players[whose()]?.bot) { const sk = ctx.skill?.(whose()) ?? .5, top = layers[layers.length - 1]; ctx._bt = (ctx._bt || 0) + dt; if (ctx._bt > .8 && (Math.abs(pos - top.x) < top.w * (.45 - .41 * sk) || ctx._bt > 4.5)) { ctx._bt = 0; drop(); } }
-        if (host && !over) { ph += dt * (1.5 + .1 * (layers.length - 1)); pos = Math.sin(ph) * R; if ((acc += dt) > .05) { acc = 0; ctx.send({ L: layers, t: turn, x: +pos.toFixed(1), msg }); } if (time > 80) end(); }
+        if (host && !over) { ph += dt * (1.5 + .1 * (layers.length - 1)); pos = Math.sin(ph) * R; if ((acc += dt) > .05) { acc = 0; ctx.send({ L: layers, t: turn, x: +pos.toFixed(1), msg, el: elim }); } if (time > 80) end(); }
         const w = whose(); s.textContent = `Height ${layers.length - 1}  |  ${w === ctx.me ? 'YOUR TURN - press!' : ctx.players[w]?.name + "'s turn"}  ${msg}`;
       },
       onMessage(m, from) {
         if (host) { if (m.d && from === whose() && !over) drop(); }
         else if (m.L) {
-          const prev = layers[layers.length - 1], grew = m.L.length > layers.length, wasTurn = turn;
+          const prev = layers[layers.length - 1], grew = m.L.length > layers.length, wasTurn = turn, wasEl = elim.length; if (m.el) elim = m.el;
           layers = m.L; turn = m.t; pos = m.x; if (m.msg != null) msg = m.msg;
-          if (grew) onDrop(prev, m.x, true, ids[(m.t - 1 + n * 1000) % n]); else if (m.end && m.miss && !ended) onDrop(prev, m.x, false, ids[wasTurn % n]);
+          if (grew) onDrop(prev, m.x, true, ids[(m.t - 1 + n * 1000) % n]); else if (elim.length > wasEl) onDrop(prev, m.x, false, elim[elim.length - 1]);
           if (m.end) startEnd();
         }
       },

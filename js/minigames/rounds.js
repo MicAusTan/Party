@@ -15,14 +15,34 @@ const CARDS = [
   { n: 'Triple Shot', d: '+2 bullets, each weaker', f: s => { s.shots += 2; s.dmg *= .55; s.cd *= 1.2; } },
   { n: 'Vampire', d: 'Heal 50% of damage dealt', f: s => { s.ls += .5; } },
   { n: 'Fast Bullets', d: '+50% bullet speed', f: s => { s.bs *= 1.5; } },
+  { n: 'Glass Cannon', d: '+80% damage, -40% health', f: s => { s.dmg *= 1.8; s.hp *= .6; } },
+  { n: 'Sniper', d: '+100% bullet speed, +25% damage, slower fire', f: s => { s.bs *= 2; s.dmg *= 1.25; s.cd *= 1.3; } },
+  { n: 'Featherweight', d: '+40% move speed, -25% health', f: s => { s.speed *= 1.4; s.hp *= .75; } },
+  { n: 'Juggernaut', d: '+100% health, -20% move speed', f: s => { s.hp *= 2; s.speed *= .8; } },
+  { n: 'Quick Hands', d: '20% faster fire', f: s => { s.cd *= .8; } },
+  { n: 'Shotgun', d: '+4 bullets, much weaker each', f: s => { s.shots += 4; s.dmg *= .4; s.cd *= 1.4; } },
+  { n: 'Leech', d: 'Heal 30% of damage, +15% health', f: s => { s.ls += .3; s.hp *= 1.15; } },
+  { n: 'Hop Hop', d: '+2 jumps, -10% speed', f: s => { s.jumps += 2; s.speed *= .9; } },
+  { n: 'Ricochet', d: 'Bullets bounce 4 more times, -20% damage', f: s => { s.bn += 4; s.dmg *= .8; } },
+  { n: 'Berserker', d: '+25% damage, +15% speed, -20% health', f: s => { s.dmg *= 1.25; s.speed *= 1.15; s.hp *= .8; } },
+  { n: 'Steady', d: '+25% health, 10% faster fire', f: s => { s.hp *= 1.25; s.cd *= .9; } },
 ];
 // A wide rooftop: ground, two tiers of ledges (3.4 apart = one jump) and a small top perch.
-const PL = [{ x0: -22, x1: 22, top: 0, th: 3 }, { x0: -20, x1: -12, top: 3.4, th: .4 }, { x0: 12, x1: 20, top: 3.4, th: .4 }, { x0: -5, x1: 5, top: 3.4, th: .4 }, { x0: -13, x1: -6, top: 6.8, th: .4 }, { x0: 6, x1: 13, top: 6.8, th: .4 }, { x0: -3, x1: 3, top: 10.2, th: .4 }];
-const NEED = 3, MAXR = 5;
+const G0 = { x0: -22, x1: 22, top: 0, th: 3 };
+const LAYOUTS = [                                                     // one is picked per game (shared seed, same on every client); ledges are 3.4 apart = one jump
+  [{ x0: -22, x1: 22, top: 0, th: 3 }, { x0: -20, x1: -12, top: 3.4, th: .4 }, { x0: 12, x1: 20, top: 3.4, th: .4 }, { x0: -5, x1: 5, top: 3.4, th: .4 }, { x0: -13, x1: -6, top: 6.8, th: .4 }, { x0: 6, x1: 13, top: 6.8, th: .4 }, { x0: -3, x1: 3, top: 10.2, th: .4 }],
+  [G0, { x0: -21, x1: -15, top: 3.4, th: .4 }, { x0: -14, x1: -8, top: 6.8, th: .4 }, { x0: -7, x1: -1, top: 10.2, th: .4 }, { x0: 15, x1: 21, top: 3.4, th: .4 }, { x0: 8, x1: 14, top: 6.8, th: .4 }, { x0: 1, x1: 7, top: 10.2, th: .4 }],     // staircases
+  [G0, { x0: -18, x1: -11, top: 3.4, th: .4 }, { x0: 11, x1: 18, top: 3.4, th: .4 }, { x0: -8, x1: 8, top: 6.8, th: .4 }, { x0: -4, x1: 4, top: 10.2, th: .4 }, { x0: -22, x1: -17, top: 6.8, th: .4 }, { x0: 17, x1: 22, top: 6.8, th: .4 }],     // islands
+  [G0, { x0: -21, x1: -16, top: 3.4, th: .4 }, { x0: -21, x1: -16, top: 6.8, th: .4 }, { x0: -21, x1: -16, top: 10.2, th: .4 }, { x0: 16, x1: 21, top: 3.4, th: .4 }, { x0: 16, x1: 21, top: 6.8, th: .4 }, { x0: 16, x1: 21, top: 10.2, th: .4 }, { x0: -5, x1: 5, top: 3.4, th: .4 }],   // towers
+];
+const NEED0 = 3, MAXR0 = 5;
 
 export default {
-  emotes: false, name: 'Rounds', desc: 'First to 3 round wins (5 rounds max). After every round EVERYONE picks an upgrade card! A/D move, W/Space jump, mouse aims, click shoots.',
+  tiers: [{ n: 'Quick', m: .8, pen: 0, d: 'First to 2 wins (3 rounds max).' }, { n: 'Normal', m: 1, pen: 0, d: 'First to 3 wins (5 rounds max).', def: true }, { n: 'Marathon', m: 1.5, pen: 0, d: 'First to 5 wins (9 rounds max).' }],
+  emotes: false, name: 'Rounds', desc: 'First to 3 round wins by default (5 rounds max; the vote can make it shorter or longer). After every round EVERYONE picks an upgrade card! A/D move, W/Space jump, mouse aims, click shoots.',
   create(ctx) {
+    const NEED = [2, 3, 5][ctx.diff ?? 1], MAXR = [3, 5, 9][ctx.diff ?? 1];                  // chosen by the table vote
+    const PL = LAYOUTS[ctx.rng() * LAYOUTS.length | 0];
     const W = ctx.world, ids = Object.keys(ctx.players), host = ctx.isHost, me = ctx.me, scene = W.scene;
     const S = stage(ctx, { sky: 0x0b0c24, fog: { color: 0x0b0c24, near: 45, far: 110 }, light: .8, sun: { color: 0xb0c0ff, intensity: .9, pos: [4, 14, 12] }, cam: { pos: [0, 7, 35], look: [0, 5.5, 0] }, camFrom: [0, 12, 54], camT: 1.4 });
     const objs = [], bm = [], vv = new THREE.Vector3();

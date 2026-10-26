@@ -33,15 +33,22 @@ tower tractor train trampoline treasure treat tunnel turbo turtle twist umbrella
 victory violin volcano voyage waffle wagon walnut walrus weasel whale wheel whistle wildcat willow
 windmill window winter wizard wonder yacht yellow zebra zigzag zombie
 `.split(/\s+/).filter(Boolean);
-const EASY = WORDS.filter(w => w.length <= 5), MID = WORDS.filter(w => w.length >= 6 && w.length <= 7), HARD = WORDS.filter(w => w.length >= 8);
+const MORE = `
+acorn alpine amber anvil attic autumn avocado bamboo barrel basket beacon bicycle biscuit bridge bubble bucket cactus candle canyon carpet castle cherry cinder circus clover comet copper cotton cradle crystal desert diamond dolphin dragon eagle ember falcon feather fiddle flannel forest fossil galaxy garden ginger glacier goblin granite harbor hammock helmet island jungle kettle lantern lizard magnet meadow mirror monsoon nectar orchard oyster paddle pebble pepper pirate planet pocket puzzle quartz rabbit raven ribbon saddle shadow signal silver spider squirrel thunder timber tunnel turtle velvet volcano walnut whistle willow window wizard yonder zephyr
+`.split(/\s+/).filter(Boolean);
+const EXPERT = `chrysanthemum onomatopoeia quarantine xylophone pneumonia questionnaire mischievous archipelago bureaucracy hippopotamus sophisticated entrepreneur kaleidoscope claustrophobia conscientious phenomenon pseudonym surveillance silhouette accommodate millennium miscellaneous psychology rendezvous tranquility unnecessary vocabulary wednesday acquaintance thoroughfare perseverance idiosyncrasy`.split(/\s+/);
+const ALL = [...new Set([...WORDS, ...MORE])];
+const EASY = ALL.filter(w => w.length <= 5), MID = ALL.filter(w => w.length >= 6 && w.length <= 7), HARD = ALL.filter(w => w.length >= 8);
 const pick = (rng, pool, n) => { const a = [...pool]; for (let i = a.length - 1; i > 0; i--) { const j = rng() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, n); };
 const norm = s => s.trim().toLowerCase();   // forgiving: ignores caps and spaces at the start/end (mobile keyboards capitalise the first letter)
 // Set: a river boat race. Every finished word surges your boat toward the finish gate; typos rock it. Everyone's progress is shared live.
 const X0 = -13, X1 = 12.5;
 export default {
-  emotes: false, name: 'Typing Race', desc: 'Type each word exactly - it advances automatically. 10 words, fastest wins. Press Enter on a typo for a 2s penalty.',
+  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '10 words. Enter on a wrong word = 2s.', def: true }, { n: 'Hard', m: 1.4, pen: 1, d: '14 words, harder ones. Any wrong letter is a typo (1.5s).' }, { n: 'Insane', m: 2, pen: 3, d: '18 words incl. expert ones. Any wrong letter = 2s.' }],
+  emotes: false, name: 'Typing Race', desc: 'Type each word exactly - it advances automatically. Fastest wins. Press Enter on a wrong word for a time penalty (on Hard/Insane any wrong letter counts).',
   create(ctx) {
-    const sb = scoreboard(ctx, { timeout: 70, bot: s => { const T = jit(mix(52, 24, s), .15); return { v: Math.round(T * 1000 + (Math.random() < mix(.5, .1, s) ? 2000 : 0)), t: T }; } }), list = [...pick(ctx.rng, EASY, 3), ...pick(ctx.rng, MID, 4), ...pick(ctx.rng, HARD, 3)];
+    const D = ctx.diff ?? 0, PEN = [2, 1.5, 2][D], STRICT = D > 0, MIX = [[3, 4, 3, 0], [2, 5, 5, 2], [1, 4, 7, 6]][D], NW = MIX.reduce((a, b) => a + b, 0);
+    const sb = scoreboard(ctx, { timeout: [70, 100, 130][D], steps: NW, bot: s => { const T = jit(mix(52, 24, s), .15) * NW / 10 * (D ? 1.15 : 1); return { v: Math.round(T * 1000 + (Math.random() < mix(.5, .1, s) ? PEN * 1000 : 0)), t: T }; } }), list = [...pick(ctx.rng, EASY, MIX[0]), ...pick(ctx.rng, MID, MIX[1]), ...pick(ctx.rng, HARD, MIX[2]), ...pick(ctx.rng, EXPERT, MIX[3])];
     let i = 0, errs = 0, time = 0, done = false, tt = 0;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, st = {}, disp = {}, np = {}, boat = {};
     ids.forEach(id => { st[id] = { i: 0, e: 0 }; disp[id] = 0; });
@@ -67,7 +74,7 @@ export default {
     S.anim((dt, tn) => {
       tt += dt;
       ids.forEach((id, k) => {
-        const cur = id === me ? i : st[id].i, d = disp[id] += (cur - disp[id]) * Math.min(1, dt * 5), x = X0 + (X1 - X0) * d / list.length, bob = Math.sin(tn * 2 + k) * .07;
+        const cur = id === me ? i : ctx.players[id]?.bot ? Math.round(sb.get(id) * list.length) : st[id].i, d = disp[id] += (cur - disp[id]) * Math.min(1, dt * 5), x = X0 + (X1 - X0) * d / list.length, bob = Math.sin(tn * 2 + k) * .07;
         boat[id].position.set(x, bob, lz(k)); W.warp(id, x, lz(k)); W.lift(id, .55 + bob); np[id].mesh.position.set(x, 3.5, lz(k));
         if (!W.m.get(id)?.emo) W.lean(id, Math.abs(cur - d) > .05 ? .22 : 0);
         np[id].set(cur >= list.length ? 'DONE!' : `${cur}/${list.length}${(id === me ? errs : st[id].e) ? '  x' + (id === me ? errs : st[id].e) : ''}`, false);
@@ -78,14 +85,16 @@ export default {
     // ---------- play ----------
     inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter' && norm(inp.value) && norm(inp.value) !== list[i]) { errs++; sfx('lose'); inp.value = ''; W.emote(me, 'shake'); W.popIcon(me, '❌'); net.emit({ i, e: errs }); } };
     inp.oninput = () => {
-      if (done || norm(inp.value) !== list[i]) return;
+      if (done) return; const v = norm(inp.value);
+      if (STRICT && v && !list[i].startsWith(v)) { errs++; sfx('lose'); inp.value = ''; W.emote(me, 'shake'); W.popIcon(me, '❌'); net.emit({ i, e: errs }); return; }      // hard+: a wrong letter is a typo straight away
+      if (v !== list[i]) return;
       inp.value = ''; i++; sfx('click'); W.hop(me, .35); net.emit({ i, e: errs });
-      if (i >= list.length) { done = true; inp.disabled = true; sb.report(Math.round(time * 1000 + errs * 2000)); W.emote(me, 'cheer'); }
+      if (i >= list.length) { done = true; inp.disabled = true; sb.report(Math.round(time * 1000 + errs * PEN * 1000)); W.emote(me, 'cheer'); }
     };
     return {
       update(dt) {
         sb.prog(i / list.length), sb.tick(dt); if (!done) time += dt;
-        w.textContent = done ? 'Done!' : list[i]; s.textContent = done ? `${(time + errs * 2).toFixed(1)}s - waiting for others...` : `${i}/${list.length}   ${time.toFixed(1)}s   Typos: ${errs}`;
+        w.textContent = done ? 'Done!' : list[i]; s.textContent = done ? `${(time + errs * PEN).toFixed(1)}s - waiting for others...` : `${i}/${list.length}   ${time.toFixed(1)}s   Typos: ${errs}`;
         if (!done && document.activeElement !== inp) inp.focus();
       },
       endNow() { sb.endNow(); },

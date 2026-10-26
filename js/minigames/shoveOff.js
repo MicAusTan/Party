@@ -81,7 +81,7 @@ export default {
           W.set(id, x, z); const g = W.m.get(id)?.g; if (!g) continue;
           if (!alive) { fall[id] = (fall[id] || 0) + 30 * dt; g.position.y = Math.max(-40, g.position.y - fall[id] * dt); }
         }
-        plat.scale.set(R, 1, R); rim.scale.set(R, 1, R);
+        plat.scale.set(R, 1, R); rim.scale.set(R, R, 1);
         el.innerHTML = `<h3>Alive: ${aliveN}/${ids.length}</h3><div>Dash: ${dashCd <= 0 ? 'READY' : dashCd.toFixed(1) + 's'}</div>`;
         if (!host || over) return;
         if ((acc += dt) >= .05) { acc = 0; ctx.send(pack()); }

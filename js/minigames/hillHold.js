@@ -6,9 +6,9 @@ import { topDown, ringPts, crowdRing } from './kit.js';
 // over the zone (gold = empty, green = one player scoring, red = contested).
 // King of the hill: the zone moves every 7s. Only a player ALONE in the zone scores (2/s). Shove rivals out!
 export default {
-  name: 'Hill Hold', desc: 'Stand alone in the glowing zone to score. If two players share it, nobody scores! The zone moves. WASD to move.',
+  name: 'Hill Hold', desc: 'Stand alone in the glowing zone to score. If two players share it, nobody scores! The zone moves. WASD to move. F / Shift / click shoves nearby players out of the zone.',
   create(ctx) {
-    const W = ctx.world, A = arena(ctx, { set: { ...topDown(W, 15.5, 21), sky: 0xe8c58a, fog: { color: 0xe8c58a, near: 55, far: 120 }, light: 1.1, sun: { color: 0xfff0d0, intensity: 1.2, pos: [-6, 16, 8] } } }), { ids, st, S } = A, host = ctx.isHost;
+    const W = ctx.world, A = arena(ctx, { shove: true, set: { ...topDown(W, 15.5, 21), sky: 0xe8c58a, fog: { color: 0xe8c58a, near: 55, far: 120 }, light: 1.1, sun: { color: 0xfff0d0, intensity: 1.2, pos: [-6, 16, 8] } } }), { ids, st, S } = A, host = ctx.isHost;
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
     S.cyl(13.2, 13.2, .5, 0xe3c88f, 0, -.5, 0, { seg: 40 }); S.cyl(11.4, 11.4, .03, 0xd2b077, 0, 0, 0, { seg: 40 }); S.cyl(6.2, 6.2, .035, 0xe9d3a0, 0, 0, 0, { seg: 40 });
     S.root.add(new THREE.Mesh(new THREE.LatheGeometry([[13.2, -.5], [13.2, 2], [15.6, 2], [15.6, 4], [18, 4], [18, 6], [20.4, 6], [20.4, -.5]].map(p => new THREE.Vector2(...p)), 48), new THREE.MeshStandardMaterial({ color: 0xc9b48c, flatShading: true, side: THREE.DoubleSide })));

@@ -29,24 +29,33 @@ export default {
     const rings = pads.map(p => { const m = new THREE.Mesh(new THREE.RingGeometry(.9, 1, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(p.position.x, .3, p.position.z); m.userData.t = 0; S.root.add(m); return m; });
     const gap = Math.min(2.6, 14 / n);
     ids.forEach((id, k) => { const x = (k - (n - 1) / 2) * gap; W.put(id, x, 0, 0); np[id] = nameplate(S, ctx, id); np[id].mesh.position.set(x, 3.4, 0); np[id].set('0'); });
+    const wall = S.screen(34, 11, 1024, 330); wall.mesh.position.set(0, 5.7, -8.6); const splats = []; let wdirty = true;           // the back wall gets PAINTED by every answer
+    const paint = (id, k, ok) => {
+      const col = Math.max(0, ids.indexOf(id)), cx = (.5 + (col - (n - 1) / 2) / Math.max(n, 3) * .9) * 1024 + (Math.random() - .5) * 120, cy = 40 + Math.random() * 250, r = ok ? 16 + Math.random() * 26 : 12 + Math.random() * 14;
+      splats.push({ x: cx, y: cy, r, c: ok ? COLS[k][1] : '#15101f', dots: Array.from({ length: 6 }, () => [Math.random() * 6.283, r * (1 + Math.random() * 1.3), r * (.12 + Math.random() * .25)]), drip: ok && Math.random() < .6 ? r * (1.5 + Math.random() * 3) : 0 }); if (splats.length > 260) splats.shift(); wdirty = true;
+    };
+    const drawWall = () => wall.draw((c, w, h) => { c.fillStyle = '#0c0818'; c.fillRect(0, 0, w, h); for (const p of splats) { c.fillStyle = p.c; c.beginPath(); c.arc(p.x, p.y, p.r, 0, 6.283); c.fill(); for (const [a, d, rr] of p.dots) { c.beginPath(); c.arc(p.x + Math.cos(a) * d, p.y + Math.sin(a) * d, rr, 0, 6.283); c.fill(); } if (p.drip) { c.fillRect(p.x - p.r * .12, p.y, p.r * .24, p.drip); c.beginPath(); c.arc(p.x, p.y + p.drip, p.r * .2, 0, 6.283); c.fill(); } } });
+    drawWall();
     const lightPad = (k, ok) => { const r = rings[k & 3]; r.userData.t = .45; r.material.color.setHex(ok ? 0x2ecc71 : 0xe74c3c); };
     S.anim(dt => {
       if (shown !== i + (done ? 100 : 0)) { shown = i + (done ? 100 : 0); drawBoard(); }
+      if (wdirty) { wdirty = false; drawWall(); }
       rings.forEach(r => { r.userData.t = Math.max(0, r.userData.t - dt); const u = 1 - r.userData.t / .45; r.scale.setScalar(.7 + u * 1.6); r.material.opacity = r.userData.t > 0 ? r.userData.t / .45 : 0; });
       ids.forEach(id => np[id].set(String(id === me ? score : st[id])));
     });
-    const net = share(ctx, 'c', ev => { if (!(ev.id in st)) return; st[ev.id] = ev.sc | 0; lightPad(ev.c | 0, ev.ok); if (ev.ok) W.hop(ev.id, .45); else { W.emote(ev.id, 'shake'); W.popIcon(ev.id, '❌'); } });
+    const net = share(ctx, 'c', ev => { if (!(ev.id in st)) return; st[ev.id] = ev.sc | 0; lightPad(ev.c | 0, ev.ok); paint(ev.id, ev.c & 3, ev.ok); if (ev.ok) W.hop(ev.id, .45); else { W.emote(ev.id, 'shake'); W.popIcon(ev.id, '❌'); } });
 
     // ---------- play ----------
     const answer = k => {
       if (done) return; const ok = k === rounds[i].c; if (ok) { score++; sfx('click'); W.hop(me, .45); } else { score--; sfx('lose'); W.emote(me, 'shake'); W.popIcon(me, '❌'); }
-      lightPad(k, ok); net.emit({ c: k, ok, sc: score }); i++;
+      lightPad(k, ok); paint(me, k, ok); net.emit({ c: k, ok, sc: score }); i++;
     };
     el.onpointerdown = e => { const b = e.target.closest('[data-k]'); if (b) { e.stopPropagation(); answer(+b.dataset.k); } };
     const key = e => { const k = '1234'.indexOf(e.key); if (k >= 0) answer(k); };
     addEventListener('keydown', key);
     return {
       update(dt) {
+        for (const id of ids) if (ctx.players[id]?.bot) { const v = Math.round(sb.get(id)); if (v > st[id]) { paint(id, Math.random() * 4 | 0, true); lightPad(Math.random() * 4 | 0, true); W.hop(id, .3); } st[id] = v; }      // bots paint as their score climbs
         sb.prog(score), sb.tick(dt); time += dt; if (!done && time >= 20) { done = true; sb.report(score); W.emote(me, 'cheer'); }
         const r = rounds[i]; s.textContent = done ? `Final: ${score} - waiting for others...` : `${Math.ceil(20 - time)}s   Score: ${score}`;
         w.textContent = done ? '' : COLS[r.w][0]; w.style.color = done ? '' : COLS[r.c][1];
