@@ -47,6 +47,18 @@ export const EMOTES = [
   { n: 'Party face', ch: '🥳', pose: 'cheer', burst: '#ff6b9d', price: 50 },
   { n: 'Bawl', ch: '😭', pose: 'sad', burst: '#4dd0e1', price: 35 },
   { n: 'Clown', ch: '🤡', pose: 'giggle', price: 45 },
+  { n: 'Thumbs up', ch: '👍', pose: 'cheer', price: 25 },
+  { n: 'Peace', ch: '✌️', pose: 'cool', price: 30 },
+  { n: 'Splash', ch: '🌊', burst: '#4dd0e1', price: 35 },
+  { n: 'Cake', ch: '🎂', pose: 'cheer', burst: '#ff9ecb', price: 45 },
+  { n: 'Coffee', ch: '☕', price: 30 },
+  { n: 'Gamer', ch: '🎮', pose: 'wiggle', price: 40 },
+  { n: 'Lucky', ch: '🍀', pose: 'love', burst: '#7cf08a', price: 40 },
+  { n: 'Zzz', ch: '💤', pose: 'sad', price: 30 },
+  { n: 'Meow', ch: '🐱', pose: 'tilt', price: 35 },
+  { n: 'Woof', ch: '🐶', pose: 'wiggle', price: 35 },
+  { n: 'Bullseye', ch: '🎯', pose: 'cool', burst: '#ff4d6d', price: 45 },
+  { n: 'Winner', ch: '🏆', pose: 'cheer', burst: '#ffd93d', price: 60 },
 ];
 export function playEmote(world, id, i, mine) {
   const e = EMOTES[i], g = world.m.get(id)?.g; if (!e || !g) return;

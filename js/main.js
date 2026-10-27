@@ -22,7 +22,7 @@ const sim = {}, keys = {}; let cfg = { mode: 'board', rounds: 8, off: [], board:
 try { cfg = { ...cfg, ...JSON.parse(localStorage.getItem('pg-cfg') || '{}') }; } catch {}
 try { look = { ...look, ...JSON.parse(localStorage.getItem('pg-look') || '{}') }; $('name').value = localStorage.getItem('pg-name') || ''; } catch {}
 look = sanitizeLook(look);
-addEventListener('keydown', e => keys[e.code] = true);
+addEventListener('keydown', e => { if (document.getElementById('shop')?.hidden === false) return; keys[e.code] = true; });
 addEventListener('keyup', e => keys[e.code] = false);
 const myName = () => {
   const n = $('name').value.trim() || 'Player' + (Math.random() * 90 + 10 | 0);
@@ -54,7 +54,7 @@ function finalGems(order, ranks) {
   const i = order.indexOf(me); if (i < 0 || practice) return;
   const r = ranks?.[i] ?? i; let g = r === 0 ? 20 : r === 1 ? 10 : r === 2 ? 5 : 0;
   if (cfg.mode === 'board') g += (board.s?.stars?.[me] || 0) * 4;
-  if (g) { addGems(g); toast('💎 +' + g + ' gems for the final standings', 2500); }
+  if (g) { addGems(g); toast('+' + g + ' gems for the final standings', 2500); }
 }
 function awardGems(pl, rk, adj) {
   const i = pl.indexOf(me); if (i < 0 || practice) return 0;
@@ -74,7 +74,7 @@ function lock() {
   const n = Object.keys(players).length, need = practice ? 1 : 2;
   $('panel').classList.toggle('compact', !lobby); $('panel').classList.toggle('folded', folded);
   $('fold').textContent = folded ? '+' : '–';
-  $('players').hidden = !lobby; $('lookBtn').hidden = lobby; $('shopBtn2').hidden = !lobby; $('look').hidden = !lobby && !lookOpen;
+  $('players').hidden = !lobby; $('shopBtn2').hidden = !lobby;
   $('waitMsg').hidden = host || !lobby; $('hostCtl').hidden = !host; $('pushHint').hidden = !lobby;
   $('start').hidden = $('settingsBtn').hidden = !lobby;
   $('start').textContent = cfg.mode === 'party' ? '▶ Start minigame party' : '▶ Start board game'; $('start').disabled = n < need; $('startHint').hidden = !lobby || n >= need;
@@ -93,49 +93,26 @@ function readInput() {
 
 // ---- players & customization
 const taken = (c, id) => Object.values(players).some(p => p.id !== id && p.color === c);
-const pickColor = (want, id) => COLORS.includes(want) && !taken(want, id) ? want : COLORS.find(c => !taken(c, id)) ?? COLORS[0];
+const pickColor = (want, id) => COLORS.includes(want) ? want : COLORS.find(c => !taken(c, id)) ?? COLORS[0];   // duplicates are allowed now
 const mkLook = (want, id) => ({ color: pickColor(want?.color, id), ...cleanLook(want) });
 let prevN = 0;
 function setPlayers(p) {
   const n = Object.keys(p).length; if (prevN && n > prevN) sfx('join'); prevN = n;
   players = p; world.sync(players);
   $('players').innerHTML = Object.values(players).map(q => `<div style="color:${q.color}">${q.id === 'host' ? '👑' : '●'} ${esc(q.name)}${q.title && q.title !== 'none' ? `<small> ${OPTS.title.vals[q.title]}</small>` : ''} <b>${q.score || 0}</b></div>`).join('');
-  renderLook(); lock();
-}
-function renderLook() {
-  const cur = players[me] ?? look, who = me ?? 'host';
-  document.querySelectorAll('[data-sw]').forEach(el => { const k = el.dataset.sw, list = k === 'color' ? COLORS : ACCENTS;
-    el.innerHTML = list.map(c => `<i class="sw${cur[k] === c ? ' me' : k === 'color' && taken(c, who) ? ' taken' : ''}" data-c="${c}" style="background:${c}"></i>`).join(''); });
-  document.querySelectorAll('[data-opt]').forEach(el => { const k = el.dataset.opt, cv = cur[k] ?? look[k];
-    el.innerHTML = Object.entries(OPTS[k].vals).filter(([v]) => owns(k, v) || v === cv).map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); el.value = cv; });
+  lock();
 }
 const pushLobby = () => { setPlayers(players); net.broadcast('lobby', players); };
 function setLook(patch, temp) {
   look = { ...look, ...patch }; if (!temp) try { localStorage.setItem('pg-look', JSON.stringify(look)); } catch {}
-  if (!me) return renderLook();                       // customizing from the menu, before joining
+  if (!me) return;                       // customizing from the menu, before joining
   if (net.isHost) { Object.assign(players.host, mkLook(look, 'host')); pushLobby(); }
   else net.send('cust', look);
 }
-document.querySelectorAll('[data-look]').forEach(el => {
-  el.innerHTML = '<div class="lbl">Color</div><div class="swatches" data-sw="color"></div><div class="lbl">Accent (hat, details)</div><div class="swatches" data-sw="accent"></div>' +
-    Object.entries(OPTS).map(([k, o]) => `<label class="opt">${o.label}<select data-opt="${k}"></select></label>`).join('') +
-    '<button class="ghost" data-rand>🎲 Randomize</button>';
-});
-document.addEventListener('click', e => {
-  const sw = e.target.closest?.('[data-sw]'), c = e.target.dataset?.c;
-  if (sw && c) { if (sw.dataset.sw === 'color' ? !taken(c, me ?? 'host') : true) setLook({ [sw.dataset.sw]: c }); }
-  if (e.target.dataset?.rand !== undefined) {
-    const r = a => a[Math.random() * a.length | 0], p = { accent: r(ACCENTS), color: r(COLORS.filter(c => !taken(c, me ?? 'host'))) };
-    for (const k in OPTS) p[k] = r(Object.keys(OPTS[k].vals).filter(v => owns(k, v))); setLook(p);
-  }
-});
-document.addEventListener('change', e => { const k = e.target.dataset?.opt; if (k) setLook({ [k]: e.target.value }); });
-renderLook();
-$('lookBtn').onclick = () => { lookOpen = !lookOpen; lock(); };
 const shop = initShop({ cur: () => look, apply: p => setLook(p), toast, name: () => $('name').value.trim() || 'You' });
 $('shopBtn').onclick = $('shopBtn2').onclick = () => shop.open();
-const gemTxt = () => document.querySelectorAll('.gemchip').forEach(e => { if (!e.closest('#shop')) e.textContent = '💎 ' + gemBal(); });
-onGems(() => { gemTxt(); renderLook(); }); gemTxt();
+const gemTxt = () => document.querySelectorAll('.gemchip').forEach(e => { if (!e.closest('#shop')) e.textContent = gemBal() + ' gems'; });
+onGems(gemTxt); gemTxt();
 $('fold').onclick = () => { folded = !folded; lock(); };
 
 function fillBots() {   // top the table up with bots to the host's 'fill seats' target (previous fill bots are replaced)
@@ -371,7 +348,7 @@ function endMg(pl, rk = pl.map((_, i) => i), adj) {
   mg?.inst?.cleanup(); mg = null; lock();
   if (pl.length) podiumFor(pl, rk, { secs: 4 });
   const pts = i => board.active ? `🪙${board.rewardFor(pl[i], rk[i], adj, pl.length)}${board.s?.mega && rk[i] === 0 ? ' +⭐' : ''}` : `+${pl.length - rk[i]}`;
-  $('hud').innerHTML = `<div class="mg res"><h2>${pl.length ? 'Results' : 'Stopped'}</h2>${pl.map((id, i) => `<div>${rk[i] + 1}. ${esc(players[id]?.name ?? '?')} <b>${pts(i)}</b></div>`).join('')}${gg ? `<div style="color:#7df;margin-top:4px">💎 +${gg} gems</div>` : ''}</div>`;
+  $('hud').innerHTML = `<div class="mg res"><h2>${pl.length ? 'Results' : 'Stopped'}</h2>${pl.map((id, i) => `<div>${rk[i] + 1}. ${esc(players[id]?.name ?? '?')} <b>${pts(i)}</b></div>`).join('')}${gg ? `<div style="color:#7df;margin-top:4px">+${gg} gems</div>` : ''}</div>`;
   setTimeout(() => { if (!mg) $('hud').innerHTML = ''; }, 4000);
 }
 net.on('mg:start', d => { hideVote(); if (!net.isHost && MINIGAMES[d.key]) startMg(d.key, d.seed, d.diff ?? 1); });
