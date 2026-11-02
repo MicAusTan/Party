@@ -7,7 +7,7 @@ const G = 6, S = 3.6, H = G * S / 2;
 export default {
   emotes: false, name: 'Crumbling Floor', desc: 'Tiles flash red, then vanish - but they grow back a few seconds later! Keep moving and stay on solid ground. Last one standing wins. WASD to move, F / Shift / click to shove.',
   create(ctx) {
-    const W = ctx.world, A = arena(ctx, { shove: true, disc: false, radius: 10.5, set: { ...topDown(W, 13, 20), sky: 0x1a0a08, fog: { color: 0x1a0a08, near: 34, far: 82 }, light: .9, sun: { color: 0xffb070, intensity: 1, pos: [4, 14, 8] } } }), { ids, st, S: SET } = A, host = ctx.isHost, fall = {}, was = {}, splashed = {}, tiles = [];
+    const W = ctx.world, A = arena(ctx, { shove: true, disc: false, radius: 17, set: { ...topDown(W, 13, 20), sky: 0x1a0a08, fog: { color: 0x1a0a08, near: 34, far: 82 }, light: .9, sun: { color: 0xffb070, intensity: 1, pos: [4, 14, 8] } } }), { ids, st, S: SET } = A, host = ctx.isHost, fall = {}, was = {}, splashed = {}, tiles = [];
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
     const lava = SET.box(140, .5, 140, 0xd8350a, 0, -7.5, 0, { em: 0x8a2200 }); SET.anim((dt, tn) => lava.material.emissive.setRGB(.5 + Math.sin(tn * 1.7) * .08, .12, .02));
     for (let k = 0; k < 16; k++) { const a = k / 16 * 6.283 + .2, r = 17 + k % 3 * 4; SET.cone(2.2 + k % 4, 7 + k % 5 * 2.6, 0x2a1a17, Math.sin(a) * r, -7.5, Math.cos(a) * r, { seg: 5 }); }       // rock spires

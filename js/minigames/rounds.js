@@ -29,6 +29,7 @@ const CARDS = [
 ];
 // A wide rooftop: ground, two tiers of ledges (3.4 apart = one jump) and a small top perch.
 const G0 = { x0: -22, x1: 22, top: 0, th: 3 };
+const lsvg = li => { const P = LAYOUTS[li], x0 = Math.min(...P.map(p => p.x0)), x1 = Math.max(...P.map(p => p.x1)), t0 = Math.min(...P.map(p => p.top)), t1 = Math.max(...P.map(p => p.top)); return `<svg viewBox="0 0 90 40" width="90" height="40">${P.map(p => `<rect x="${((p.x0 - x0) / (x1 - x0 || 1) * 86 + 2).toFixed(1)}" y="${(34 - (p.top - t0) / (t1 - t0 || 1) * 26).toFixed(1)}" width="${Math.max(2, (p.x1 - p.x0) / (x1 - x0 || 1) * 86).toFixed(1)}" height="3" fill="#4dd0e1"/>`).join('')}</svg>`; };
 const LAYOUTS = [                                                     // one is picked per game (shared seed, same on every client); ledges are 3.4 apart = one jump
   [{ x0: -22, x1: 22, top: 0, th: 3 }, { x0: -20, x1: -12, top: 3.4, th: .4 }, { x0: 12, x1: 20, top: 3.4, th: .4 }, { x0: -5, x1: 5, top: 3.4, th: .4 }, { x0: -13, x1: -6, top: 6.8, th: .4 }, { x0: 6, x1: 13, top: 6.8, th: .4 }, { x0: -3, x1: 3, top: 10.2, th: .4 }],
   [G0, { x0: -21, x1: -15, top: 3.4, th: .4 }, { x0: -14, x1: -8, top: 6.8, th: .4 }, { x0: -7, x1: -1, top: 10.2, th: .4 }, { x0: 15, x1: 21, top: 3.4, th: .4 }, { x0: 8, x1: 14, top: 6.8, th: .4 }, { x0: 1, x1: 7, top: 10.2, th: .4 }],     // staircases
@@ -42,15 +43,21 @@ export default {
   emotes: false, name: 'Rounds', desc: 'First to 3 round wins by default (5 rounds max; the vote can make it shorter or longer). After every round EVERYONE picks an upgrade card! A/D move, W/Space jump, mouse aims, click shoots.',
   create(ctx) {
     const NEED = [2, 3, 5][ctx.diff ?? 1], MAXR = [3, 5, 9][ctx.diff ?? 1];                  // chosen by the table vote
-    const PL = LAYOUTS[ctx.rng() * LAYOUTS.length | 0];
+    let lay = ctx.rng() * LAYOUTS.length | 0, PL = LAYOUTS[lay];
     const W = ctx.world, ids = Object.keys(ctx.players), host = ctx.isHost, me = ctx.me, scene = W.scene;
     const S = stage(ctx, { sky: 0x0b0c24, fog: { color: 0x0b0c24, near: 45, far: 110 }, light: .8, sun: { color: 0xb0c0ff, intensity: .9, pos: [4, 14, 12] }, cam: { pos: [0, 7, 35], look: [0, 5.5, 0] }, camFrom: [0, 12, 54], camT: 1.4 });
     const objs = [], bm = [], vv = new THREE.Vector3();
+    let lm = [];
+    const buildLayout = () => {
+      lm.forEach(m => { S.root.remove(m); m.geometry?.dispose(); m.material?.dispose(); }); lm = [];
     PL.forEach((p, i) => {
       const m = new THREE.Mesh(new THREE.BoxGeometry(p.x1 - p.x0, p.th, 3), new THREE.MeshStandardMaterial({ color: i ? 0x4b3f6b : 0x39405a, emissive: i ? 0x150a2a : 0x0a0d1a, flatShading: true }));
-      m.position.set((p.x0 + p.x1) / 2, p.top - p.th / 2, 0); S.root.add(m); objs.push(m);
+      m.position.set((p.x0 + p.x1) / 2, p.top - p.th / 2, 0); S.root.add(m); objs.push(m); lm.push(m);
     });
-    PL.forEach((p, i) => S.box(p.x1 - p.x0 + .05, .09, 3.05, i % 2 ? 0xff4dd8 : 0x4dd0e1, (p.x0 + p.x1) / 2, p.top - .05, 0, { basic: true }));               // neon ledge edges
+    PL.forEach((p, i) => { const eb = S.box(p.x1 - p.x0 + .05, .09, 3.05, i % 2 ? 0xff4dd8 : 0x4dd0e1, (p.x0 + p.x1) / 2, p.top - .05, 0, { basic: true }); if (eb) lm.push(eb); });
+    };
+    buildLayout();
+    const setLayout = i => { if (i == null || i === lay) return; lay = i; PL = LAYOUTS[i]; buildLayout(); };               // neon ledge edges
     S.box(44.6, 14, 3.2, 0x151832, 0, -14, 0); for (let k = 0; k < 10; k++) { S.box(1.6, 1.1, 1.2, 0x2a2f55, -19.8 + k * 4.4, 0, -.7); if (k % 2) { S.cyl(.05, .05, 2.4, 0x8a90b0, -19.8 + k * 4.4, 1.1, -.7, { seg: 4 }); S.sph(.12, 0xff3b30, -19.8 + k * 4.4, 3.5, -.7, { basic: true, seg: 5 }); } }   // rooftop clutter
     S.sph(3.4, 0xfff2c0, 22, 22, -45, { basic: true }); starfield(S, 160, 75, 8);
     const skyline = (z, w, h, y, dark, seed) => {
@@ -63,7 +70,7 @@ export default {
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
 
     // shared view state
-    const hpPrev = {}; let prevBl = 0, phase = 'fight', round = 1, intro = 1.4, offers = {}, myPicked = 0, snap = null, bl = [], lastH = '', last = '', sendT = 0, acc = 0, simAcc = 0;
+    const hpPrev = {}; let prevBl = 0, phase = 'fight', round = 1, intro = 1.4, offers = {}, mapOpts = [], votes = {}, myVote = -1, myPicked = 0, snap = null, bl = [], lastH = '', last = '', sendT = 0, acc = 0, simAcc = 0;
     const wins = {}; ids.forEach(id => wins[id] = 0);
     // host-only state
     const st = {}; let bullets = [], freeze = 1.4, ft = 0, picked = {}, pickT = 0, over = false;
@@ -79,6 +86,7 @@ export default {
     const pd = e => { if (e.button === 0) fire = true; }, pu = () => { fire = false; };
     addEventListener('keydown', kd); addEventListener('keyup', ku); addEventListener('pointermove', pm); addEventListener('pointerdown', pd); addEventListener('pointerup', pu); addEventListener('blur', pu);
     el.onpointerdown = e => {
+      const mb = e.target.closest('[data-m]'); if (mb) { e.stopPropagation(); myVote = +mb.dataset.m; host ? vote(me, myVote) : ctx.send({ k: 'vote', i: myVote }); lastH = ''; return; }
       const b = e.target.closest('[data-c]'); if (!b) return; e.stopPropagation();
       const c = +b.dataset.c; myPicked = round; host ? pick(me, c) : ctx.send({ k: 'pick', c });
     };
@@ -95,8 +103,12 @@ export default {
 
     // ---- host logic
     function startRound() {
+      if (round > 1 && mapOpts.length) {        // the next map is the players' vote (ties: random between the leaders); the host only counts
+        const cnt = mapOpts.map(() => 0); Object.values(votes).forEach(v => { if (cnt[v] != null) cnt[v]++; }); const mx = Math.max(...cnt), top = cnt.map((c, i) => c === mx ? i : -1).filter(i => i >= 0);
+        setLayout(mapOpts[top[Math.random() * top.length | 0]]);
+      }
       phase = 'fight'; freeze = 1.4; intro = 1.4; ft = 0; bullets = []; picked = {}; offers = {}; spawn();
-      ctx.send({ k: 'ph', phase, round, wins, offers });
+      ctx.send({ k: 'ph', phase, round, wins, offers, lay });
     }
     function endRound(w) {
       if (w) wins[w]++;
@@ -106,21 +118,22 @@ export default {
       }
       round++; const pickers = [...ids];                 // everyone picks a card after every round (winners too)
       if (!pickers.length) return startRound();
-      phase = 'pick'; pickT = 14; picked = {}; offers = {};
+      phase = 'pick'; pickT = 14; picked = {}; offers = {}; votes = {}; myVote = -1; mapOpts = LAYOUTS.map((_, i) => i).filter(i => i !== lay).sort(() => Math.random() - .5).slice(0, 3);
       pickers.forEach(id => offers[id] = [...CARDS.keys()].sort(() => ctx.rng() - .5).slice(0, 3));
-      ctx.send({ k: 'ph', phase, round, wins, offers });
+      ctx.send({ k: 'ph', phase, round, wins, offers, maps: mapOpts });
     }
+    function vote(id, i) { if (phase !== 'pick' || mapOpts[i] == null) return; votes[id] = i; ctx.send({ k: 'votes', v: votes }); if (Object.keys(offers).every(k => picked[k] && votes[k] != null)) startRound(); }
     function pick(id, c) {
       if (phase !== 'pick' || !offers[id] || picked[id] || !offers[id].includes(c)) return;
       CARDS[c].f(st[id].st); picked[id] = true;
-      if (Object.keys(offers).every(k => picked[k])) startRound();
+      if (Object.keys(offers).every(k => picked[k] && (votes[k] != null || !mapOpts.length))) startRound();
     }
     // bots (host only, Math.random): pick a target, keep ~8 away, jump toward higher ledges, aim with skill-based error
     const bb = {};
     function botThink(dt) {
       for (const id of ids) {
         if (!ctx.players[id]?.bot) continue; const s = st[id], sk = ctx.skill?.(id) ?? .5, b = bb[id] ??= { t: 0, dir: 0, j: 0, err: 0, pk: 0, burst: 0 };
-        if (phase === 'pick') { if (offers[id] && !picked[id] && (b.pk += dt) > .8 + Math.random() * 2) { const o = offers[id]; pick(id, o[Math.random() * o.length | 0]); b.pk = 0; } continue; }
+        if (phase === 'pick') { if (offers[id] && !picked[id] && (b.pk += dt) > .8 + Math.random() * 2) { const o = offers[id]; if (votes[id] == null) vote(id, Math.random() * mapOpts.length | 0); pick(id, o[Math.random() * o.length | 0]); b.pk = 0; } continue; }
         if (phase !== 'fight' || !s.alive) continue;
         let tg = null, td = 1e9; for (const o of ids) { if (o === id || !st[o].alive) continue; const d = Math.hypot(st[o].x - s.x, st[o].y - s.y); if (d < td) { td = d; tg = st[o]; } }
         if (!tg) { applyInput(id, { x: 0, j: 0, a: 0, f: 0 }); continue; }
@@ -186,7 +199,7 @@ export default {
           applyInput(me, inp); botThink(dt); simAcc = Math.min(.1, simAcc + dt);
           while (simAcc >= 1 / 60) { step(1 / 60); simAcc -= 1 / 60; }
           // (iterate a snapshot: pick() can start the next round and replace `offers`)
-          if (phase === 'pick' && !over && (pickT -= dt) <= 0) { for (const [id, o] of Object.entries(offers)) if (!picked[id]) pick(id, o[0]); }
+          if (phase === 'pick' && !over && (pickT -= dt) <= 0) { for (const id of ids) if (votes[id] == null) votes[id] = Math.random() * mapOpts.length | 0; for (const [id, o] of Object.entries(offers)) if (!picked[id]) pick(id, o[0]); }
           const sn = pack(); snap = sn.p; bl = sn.b;
           if ((acc += dt) >= .05) { acc = 0; ctx.send(sn); }
         } else {
@@ -211,12 +224,14 @@ export default {
         if (phase === 'pick') h += mine && myPicked < round
           ? '<div class="tiles">' + mine.map(c => `<button class="card" data-c="${c}"><b>${CARDS[c].n}</b><br><small>${CARDS[c].d}</small></button>`).join('') + '</div>'
           : '<div>Waiting for others to pick...</div>';
+        if (phase === 'pick' && mapOpts.length) h += '<div class="lbl">Vote for the next map</div><div class="tiles">' + mapOpts.map((li, i) => `<button class="card${myVote === i ? ' sel' : ''}" data-m="${i}">${lsvg(li)}<br><small>Map ${li + 1} · ${Object.values(votes).filter(v => v === i).length} votes</small></button>`).join('') + '</div>';
         if (h !== lastH) { el.innerHTML = h; lastH = h; }
       },
       onMessage(m, from) {
         if (host) { if (m.k === 'in') applyInput(from, m); else if (m.k === 'pick') pick(from, m.c | 0); }
         else if (m.k === 's') { snap = m.p; bl = m.b.map(a => a.slice()); }
-        else if (m.k === 'ph') { phase = m.phase; round = m.round; Object.assign(wins, m.wins); offers = m.offers || {}; if (phase === 'fight') intro = 1.4; }
+        else if (m.k === 'votes') { votes = m.v || {}; lastH = ''; }
+        else if (m.k === 'ph') { setLayout(m.lay); phase = m.phase; round = m.round; Object.assign(wins, m.wins); offers = m.offers || {}; if (phase === 'pick') { mapOpts = m.maps || []; votes = {}; myVote = -1; } if (phase === 'fight') intro = 1.4; }
       },
       cleanup() {
         removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('pointermove', pm);

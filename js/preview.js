@@ -1,40 +1,39 @@
 import * as THREE from 'three';
 import { World } from './world.js';
 import { OPTS } from './look.js';
-import { pedestal, createFx, buildStage, bannerMesh, STAGES, SPOTS } from './victory.js';
+import { pedestal, pedLayout, createFx, buildStage, buildSpot, bannerMesh, STAGES } from './victory.js';
 import { playEmote } from './emotes.js';
 // Shop preview: a second, small World drawn into its own canvas. Character view (plain platform) or podium view
 // (pedestal + spotlight + stage colours + win effect). Drag to rotate, wheel to zoom. update(look, name, podium) rebuilds it.
 export function createPreview(canvas) {
   const w = new World(canvas); w.setIsland(false);
   const grp = new THREE.Group(); w.scene.add(grp);
-  let dec = null, spd = 0, idle = 9, podium = false, look = {}, name = 'You', fx = null, yaw = .45, pitch = .2, zoom = 1, auto = true, walking = false, drag = null, raf = 0, last = 0, tt = 0, pose = 'cheer', poseT = 0, wa = 0;
+  let showDice = false, dTimer = 0, hand = null, hp = 0, showHand = false, spot = null, dec = null, spd = 0, idle = 9, podium = false, look = {}, name = 'You', fx = null, yaw = .45, pitch = .2, zoom = 1, auto = true, walking = false, drag = null, raf = 0, last = 0, tt = 0, pose = 'cheer', poseT = 0, wa = 0;
   const mesh = (geo, col, x, y, z, basic, op) => {
     const m = new THREE.Mesh(geo, basic ? new THREE.MeshBasicMaterial({ color: col, transparent: op != null, opacity: op ?? 1, depthWrite: op == null }) : new THREE.MeshStandardMaterial({ color: col, flatShading: true }));
     m.position.set(x, y, z); grp.add(m); return m;
   };
   const box = (bw, bh, bd, c, x = 0, y = 0, z = 0, o) => mesh(new THREE.BoxGeometry(bw, bh, bd), c, x, y + bh / 2, z, o?.basic);
-  const cyl = (rt, rb, h, c, x = 0, y = 0, z = 0, o) => mesh(new THREE.CylinderGeometry(rt, rb, h, 12), c, x, y + h / 2, z, o?.basic);
-  const cone = (r, h, c, x = 0, y = 0, z = 0, o) => mesh(new THREE.ConeGeometry(r, h, 8), c, x, y + h / 2, z, o?.basic);
+  const cyl = (rt, rb, h, c, x = 0, y = 0, z = 0, o) => mesh(new THREE.CylinderGeometry(rt, rb, h, o?.seg ?? 12), c, x, y + h / 2, z, o?.basic, o?.op);
+  const cone = (r, h, c, x = 0, y = 0, z = 0, o) => mesh(new THREE.ConeGeometry(r, h, 8), c, x, y + h / 2, z, o?.basic, o?.op);
   function build() {
     for (const c of [...grp.children]) { grp.remove(c); c.geometry?.dispose?.(); }
-    fx = null; dec = null;
+    fx = null; dec = null; spot = null;
     if (podium) {
       const ST = STAGES[look.stage] || STAGES.night;
       w.scene.background = new THREE.Color(ST.sky);
       mesh(new THREE.CylinderGeometry(7, 7, .6, 36), ST.d1, 0, -.3, 0);
       mesh(new THREE.CylinderGeometry(4.6, 4.6, .05, 36), ST.d2, 0, .02, 0);
-      pedestal({ box, cyl, cone }, look.ped, { h: 1.8, c: 0xf1c40f }, 0, 2.4);
-      mesh(new THREE.ConeGeometry(2.4, 10, 24, 1, true), SPOTS[look.spot] ?? SPOTS.gold, 0, 5, 0, true, .12);
+      pedestal({ box, cyl, cone }, look.ped, { h: 1.8, c: 0xf1c40f }, 0, 2.4, look.pshape); spot = buildSpot(look.spot, grp, 0, 2.4, 0, 2.4);
       fx = createFx(look.fx, grp, 0, 4, w); fx.show(true); dec = buildStage(look.stage in STAGES ? look.stage : 'night', grp, 0, 2.4);
-      const cr = (OPTS.crest.vals[look.crest] || OPTS.crest.vals.trophy).split(' ')[0], bn = bannerMesh(name, cr, 6); bn.position.set(0, 4.9, -1); grp.add(bn);
+      const cr = (OPTS.crest.vals[look.crest] || OPTS.crest.vals.trophy).split(' ')[0], bn = bannerMesh(name, cr, 6, look.banner); bn.position.set(0, 4.9, -1); grp.add(bn);
     } else {
       w.scene.background = new THREE.Color(0x2a2458);
       mesh(new THREE.CylinderGeometry(1.9, 2.1, .3, 28), 0x3d3580, 0, -.15, 0);
       mesh(new THREE.TorusGeometry(1.95, .04, 4, 28), 0xffd93d, 0, .02, 0, true).rotation.x = Math.PI / 2;
     }
     w.sync({ me: { id: 'me', name, ...look } });
-    w.put('me', 0, 0, .4, podium ? 1.8 : 0); poseT = .3;
+    w.put('me', 0, 0, .4, podium ? pedLayout(look.ped, look.pshape, 1.8).stand : 0); poseT = .3;
   }
   function step(dt) {
     tt += dt;
@@ -44,7 +43,9 @@ export function createPreview(canvas) {
     w.setCam([Math.sin(y) * Math.cos(pitch) * d, cy + Math.sin(pitch) * d, Math.cos(y) * Math.cos(pitch) * d], [0, cy, 0]);
     if (podium && (poseT -= dt) <= 0) { poseT = 2.6; w.emote('me', pose); }
     if (walking && !podium) { wa += dt * 1.5; w.set('me', Math.cos(wa) * 1.3, Math.sin(wa) * 1.3); }
-    fx?.update(dt, tt); dec?.update(dt, tt);
+    fx?.update(dt, tt); dec?.update(dt, tt); spot?.update(dt, tt);
+    if (showDice && (dTimer -= dt) <= 0) { dTimer = 3.4; w.rollDice('me', [1 + (Math.random() * 6 | 0), 1 + (Math.random() * 6 | 0)], look.dice); }
+    if (showHand) { hand ??= w.handMesh('me'); if (hand) { hp = (hp + dt) % 1.8; const k = hp < .6 ? Math.sin(hp / .6 * Math.PI) : 0, g = w.m.get('me')?.g; if (g) hand.position.set(g.position.x + Math.sin(g.rotation.y) * (.55 + k * .9), g.position.y + .85, g.position.z + Math.cos(g.rotation.y) * (.55 + k * .9)); hand.rotation.y += dt * (k ? 3 : .6); } }
     w.frame(dt);
   }
   const tick = now => { raf = requestAnimationFrame(tick); const dt = Math.min(.05, (now - last) / 1000); last = now; step(dt); };
@@ -54,8 +55,8 @@ export function createPreview(canvas) {
   c.addEventListener?.('pointerup', up); c.addEventListener?.('pointercancel', up);
   c.addEventListener?.('wheel', e => { idle = 0; zoom = Math.max(.6, Math.min(1.6, zoom + e.deltaY * .001)); e.preventDefault(); }, { passive: false });
   return {
-    update(l, n, pod) { look = l; name = n || 'You'; podium = !!pod; pose = look.vpose in OPTS.vpose.vals ? look.vpose : 'cheer'; walking = false; build(); },
-    walk(v) { if (walking && !v) w.put('me', 0, 0, .4, podium ? 1.8 : 0); walking = !!v && !podium; },
+    update(l, n, pod, sh, dc) { showHand = !!sh && !pod; showDice = !!dc && !pod; dTimer = .5; if (hand) { w.scene.remove(hand); hand = null; } look = l; name = n || 'You'; podium = !!pod; pose = look.vpose in OPTS.vpose.vals ? look.vpose : 'cheer'; walking = false; build(); },
+    walk(v) { if (walking && !v) w.put('me', 0, 0, .4, podium ? pedLayout(look.ped, look.pshape, 1.8).stand : 0); walking = !!v && !podium; },
     setAuto(v) { auto = v; },
     emote(i) { playEmote(w, 'me', i, false); },
     start() { if (!raf && typeof requestAnimationFrame === 'function') { last = performance.now(); raf = requestAnimationFrame(tick); } setTimeout(() => w.resize(), 0); },

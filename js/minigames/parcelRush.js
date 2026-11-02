@@ -7,13 +7,13 @@ import { stage } from './stage.js';
 // green zone = +1 (+ streak bonus); pressing a colour that isn't there = -1 and jams your hands for a moment.
 const COLS7 = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6, 0xe67e22, 0x1abc9c], CSS7 = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c'], DUR = 30, Z0 = .7, Z1 = .97, BX = 10;
 export default {
-  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '5 colours.', def: true }, { n: 'Hard', m: 1.4, pen: 1, d: '6 colours, faster belt, more parcels.' }, { n: 'Insane', m: 2, pen: 2, d: '7 colours, much faster belt.' }],
-  emotes: false, name: 'Parcel Rush', desc: 'FREE FOR ALL! Parcels of 5 colours ride your conveyor, faster and faster. When one reaches the green zone press its number key (1-5) or tap its tile. Streaks score bonus points; wrong presses cost a point and jam your hands. 30 seconds.',
+  tiers: [{ n: 'Easy', m: .8, pen: 0, d: '2 colours.' }, { n: 'Normal', m: 1, pen: 0, d: '3 colours.', def: true }, { n: 'Hard', m: 1.4, pen: 1, d: '4 colours.' }],
+  emotes: false, name: 'Parcel Rush', desc: 'FREE FOR ALL! Parcels of 2-4 colours (set by the difficulty) ride your conveyor, faster and faster. When one reaches the green zone press its number key or tap its tile. Streaks score bonus points; wrong presses cost a point and jam your hands. 30 seconds.',
   create(ctx) {
-    const D = ctx.diff ?? 0, C = [5, 6, 7][D], COLS = COLS7.slice(0, C), CSS = CSS7.slice(0, C), SPD = [1, 1.15, 1.3][D], GAP = [1, .88, .78][D];
+    const D = ctx.diff ?? 1, C = [2, 3, 4][D], COLS = COLS7.slice(0, C), CSS = CSS7.slice(0, C), SPD = [1, 1.08, 1.16][D], GAP = [1, .94, .88][D];
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me;
     const stream = []; { let t = .8; for (let k = 0; k < 120; k++) { stream.push({ t, c: ctx.rng() * C | 0 }); t += Math.max(.28, .95 - k * .016) * GAP * (.7 + ctx.rng() * .6); } }     // the same for everyone
-    const sb = scoreboard(ctx, { timeout: DUR + 10, lower: false, grace: 1.5, bot: s => ({ v: Math.round(jit(mix(10, 40, s), .15)), t: DUR }) });
+    const sb = scoreboard(ctx, { timeout: DUR + 10, lower: false, grace: 1.5, bot: s => ({ v: Math.round(jit(mix(6, 26, s) * [1.15, 1, .9][D], .2)), t: DUR }) });
     let time = 0, score = 0, streak = 0, jam = 0, nextS = 0, done = false, ps = []; const pms = [];
     const el = document.createElement('div'); el.className = 'mg';
     el.innerHTML = '<h3 id="s"></h3><div>' + CSS.map((c, k) => `<button data-c="${k}" style="background:${c};width:52px;height:44px;margin:3px">${k + 1}</button>`).join('') + '</div>'; ctx.hud.append(el); const s = el.querySelector('#s');

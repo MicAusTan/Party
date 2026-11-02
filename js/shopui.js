@@ -1,11 +1,11 @@
 import { OPTS, DEFAULT_LOOK, COLORS, ACCENTS } from './look.js';
-import { EMOTES } from './emotes.js';
+import { EMOTES, emoteTag } from './emotes.js';
 import { owns, price, buy, gems, onGems, getSet, setSet, getSets, setSets } from './wallet.js';
 import { createPreview } from './preview.js';
 // Customize + shop. Left: items. Right: live preview. Clicking an item only changes the PREVIEW (try on anything, owned or not);
 // Equip / Buy (selected item) or the bottom buttons change what you really wear. Add a category: OPTS (look.js) + prices (wallet.js) + GROUPS below.
-const PODIUM = ['ped', 'fx', 'vpose', 'crest', 'spot', 'stage'];
-const GROUPS = [['Character', ['hat', 'body', 'coat', 'face', 'back', 'pattern', 'aura', 'ring', 'trail']], ['Podium & profile', ['ped', 'fx', 'vpose', 'crest', 'spot', 'stage', 'title']], ['Other', ['color', 'sets', 'emote']]];
+const PODIUM = ['ped', 'pshape', 'fx', 'vpose', 'crest', 'banner', 'spot', 'stage'];
+const GROUPS = [['Character', ['hat', 'body', 'head', 'hands', 'coat', 'face', 'back', 'pattern', 'trail', 'pet']], ['Podium & profile', ['ped', 'pshape', 'fx', 'vpose', 'crest', 'banner', 'spot', 'stage', 'title', 'tagframe', 'dice']], ['Other', ['color', 'sets', 'emote']]];
 const I = {
   gem: '<svg class="ic" viewBox="0 0 12 12"><path d="M2.2 4 4 1.2h4L9.8 4 6 10.8z"/></svg>',
   lock: '<svg class="ic" viewBox="0 0 12 12"><path d="M3 5.2V4a3 3 0 0 1 6 0v1.2h.8v5.6H2.2V5.2zm1.4 0h3.2V4a1.6 1.6 0 0 0-3.2 0z"/></svg>',
@@ -23,19 +23,19 @@ export function initShop({ cur, apply, toast, name }) {
   const KEYS = () => [...Object.keys(OPTS), 'color', 'accent'];
   const isPod = () => view === 'podium' || (view === 'auto' && PODIUM.includes(cat));
   const diffs = () => KEYS().filter(c => pv[c] !== cur()[c]);
-  const miss = () => Object.keys(OPTS).filter(c => !owns(c, pv[c]));
+  const miss = () => Object.keys(OPTS).filter(c => c !== 'head' && c !== 'hands' && !owns(c, pv[c]));
   const lbl = (c, v) => c === 'emote' ? (EMOTES[v]?.ch + ' ' + EMOTES[v]?.n) : (OPTS[c].vals[v] ?? v);
   const tl = k => k === 'color' ? 'Colours' : k === 'sets' ? 'Saved sets' : k === 'emote' ? 'Emotes' : OPTS[k].label;
   const gem = n => `${I.gem}${n}`;
   const cnt = k => k === 'color' ? '' : k === 'sets' ? getSets().length + '/12' : k === 'emote' ? EMOTES.filter((_, i) => owns('emote', i)).length + '/' + EMOTES.length : Object.keys(OPTS[k].vals).filter(v => owns(k, v)).length + '/' + Object.keys(OPTS[k].vals).length;
 
-  function pushPreview() { if (!pre) return; pre.setAuto(auto); pre.update(pv, name(), isPod()); pre.walk(walk); }
+  function pushPreview() { if (!pre) return; pre.setAuto(auto); pre.update(pv, name(), isPod(), cat === 'hands', cat === 'dice'); pre.walk(walk); }
   function renderTabs() {
     const grouped = new Set(GROUPS.flatMap(g => g[1])), extra = Object.keys(OPTS).filter(k => !grouped.has(k));
     $('stabs').innerHTML = GROUPS.map(([g, ks], gi) => `<div class="tg"><span class="tl">${g}</span>${(gi ? ks : [...ks, ...extra]).filter(k => k === 'color' || k === 'sets' || k === 'emote' || OPTS[k]).map(k => `<button class="tab${k === cat ? ' on' : ''}" data-c="${k}">${tl(k)}${cnt(k) ? ` <small>${cnt(k)}</small>` : ''}</button>`).join('')}</div>`).join('');
     $('sfilt').hidden = cat === 'color' || cat === 'sets';
     $('sfilt').innerHTML = [['all', 'All'], ['owned', 'Owned'], ['locked', 'Locked']].map(([k, n]) => `<button class="fb f-${k}${k === filt ? ' on' : ''}" data-f="${k}">${n}</button>`).join('') +
-      `<small>${cat === 'emote' ? `On your wheel: ${getSet().length}/16 (hold G in game)` : 'Click an item to try it on in the preview'}</small>`;
+      `<small>${cat === 'emote' ? `On your wheel: ${getSet().length}/16 (hold G in game)` : cat === 'hands' ? 'The hand shape shown when you shove or grab in minigames' : cat === 'dice' ? 'The dice you roll on the board (the preview rolls them for you)' : cat === 'pet' ? 'Press P in game to pet your pet. Every pet reacts differently' : 'Click an item to try it on in the preview'}</small>`;
   }
   function renderGrid() {
     const real = cur();
@@ -51,19 +51,19 @@ export function initShop({ cur, apply, toast, name }) {
       return;
     }
     const emo = cat === 'emote', set = getSet();
-    let list = emo ? EMOTES.map((e, i) => [i, e.ch + ' ' + e.n]) : Object.entries(OPTS[cat].vals);
+    let list = emo ? EMOTES.map((e, i) => [i, e.ch + ' ' + e.n + (emoteTag(e) ? ' · ' + emoteTag(e) : '')]) : Object.entries(OPTS[cat].vals);
     list = list.filter(([v]) => filt === 'all' || (filt === 'owned') === owns(cat, v));
     if (filt === 'locked') list.sort((a, b) => price(cat, a[0]) - price(cat, b[0]));
     $('sgrid').innerHTML = list.map(([v, nm]) => {
       const own = owns(cat, v), p = price(cat, v), s = sel && sel.c === cat && sel.v == v, inPv = !emo && pv[cat] === v, worn = !emo && real[cat] === v, onW = emo && set.includes(v);
-      const tag = emo ? (onW ? `${I.check} On wheel` : own ? 'Owned' : gem(p)) : worn ? `${I.check} Worn` : own ? 'Owned' : `${I.lock} ${gem(p)}`;
+      const needs = (cat === 'head' || cat === 'hands') && !own; const tag = needs ? `Needs ${OPTS.body.vals[v]} body` : emo ? (onW ? `${I.check} On wheel` : own ? 'Owned' : gem(p)) : worn ? `${I.check} Worn` : own ? 'Owned' : `${I.lock} ${gem(p)}`;
       return `<div class="it t${tier(own && !p ? 0 : p)}${s ? ' sel' : ''}${inPv ? ' inpv' : ''}${own ? '' : ' lock'}" data-v="${v}"><b>${esc(nm)}</b><span class="pill${own ? ' own' : ''}">${tag}</span></div>`;
     }).join('') || '<small>Nothing here.</small>';
   }
   function renderSel() {
     if (!sel) { $('sel').innerHTML = '<small>Select an item to see its details here.</small>'; return; }
     const { c, v } = sel, emo = c === 'emote', own = owns(c, v), p = price(c, v), set = getSet(), worn = !emo && cur()[c] === v, onW = emo && set.includes(+v);
-    const btn = own ? (emo ? `<button class="pri" data-k="primary">${onW ? 'Remove from wheel' : 'Add to wheel'}</button>` : `<button class="pri" data-k="primary" ${worn ? 'disabled' : ''}>${worn ? 'Currently worn' : 'Equip'}</button>`)
+    const btn = (!own && (c === 'head' || c === 'hands')) ? `<button class="pri" disabled>Own the ${OPTS.body.vals[v]} body first</button>` : own ? (emo ? `<button class="pri" data-k="primary">${onW ? 'Remove from wheel' : 'Add to wheel'}</button>` : `<button class="pri" data-k="primary" ${worn ? 'disabled' : ''}>${worn ? 'Currently worn' : 'Equip'}</button>`)
       : `<button class="pri" data-k="primary" ${gems() < p ? 'disabled' : ''}>Buy ${emo ? '' : '& equip '}for ${gem(p)}</button>`;
     $('sel').innerHTML = `<div><b>${esc(lbl(c, v))}</b><small>${tl(c)} · ${own ? 'owned' : gems() < p ? `${I.lock} need ${p - gems()} more` : 'locked'}</small></div>${btn}`;
   }
@@ -75,8 +75,8 @@ export function initShop({ cur, apply, toast, name }) {
   }
   function renderActs() {
     const m = miss(), cost = m.reduce((s, c) => s + price(c, pv[c]), 0), eqn = diffs().filter(c => c === 'color' || c === 'accent' || owns(c, pv[c])).length;
-    $('acts').innerHTML = '<button class="ghost" data-k="reset">Reset</button><button class="ghost" data-k="blank">Blank</button><button class="ghost" data-k="unall">Unequip all</button><button class="ghost" data-k="rand">Random owned</button>' +
-      `<button class="pri2" data-k="equip" ${eqn ? '' : 'disabled'}>Equip owned (${eqn})</button>` + (m.length ? `<button class="pri2" data-k="buyall" ${gems() < cost ? 'disabled' : ''}>Buy all ${m.length} in preview ${gem(cost)}</button>` : '');
+    $('acts').innerHTML = `<button class="ghost" data-k="undo" title="Step back to your previous preview change (Ctrl+Z)" ${hi > 0 ? '' : 'disabled'}>Undo</button><button class="ghost" data-k="redo" title="Re-apply the change you just undid (Ctrl+Y)" ${hi < hist.length - 1 ? '' : 'disabled'}>Redo</button>` + '<button class="ghost" data-k="reset" title="Put the preview back to exactly what you are wearing right now">Reset</button><button class="ghost" data-k="blank" title="Clear the preview to the plain default look (your colours stay). Nothing you wear changes until you press Equip">Blank</button><button class="ghost" data-k="unall" title="Take off everything you are really wearing, right now">Unequip all</button><button class="ghost" data-k="rand" title="Fill the preview with a random mix of items you own">Random owned</button>' +
+      `<button class="pri2" data-k="equip" title="Really wear every item in the preview that you own" ${eqn ? '' : 'disabled'}>Equip owned (${eqn})</button>` + (m.length ? `<button class="ghost" data-k="locked" title="Take the items you do not own out of the preview (does not touch what you wear)">Remove locked</button><button class="pri2" data-k="buyall" title="Buy every locked item in the preview and wear it all" ${gems() < cost ? 'disabled' : ''}>Buy all ${m.length} in preview ${gem(cost)}</button>` : '');
   }
   function renderPv() {
     const pod = isPod();
@@ -84,7 +84,10 @@ export function initShop({ cur, apply, toast, name }) {
     $('sg').innerHTML = `${I.gem} <b>${gems()}</b>`;
   }
   const renderAll = () => { if (el.hidden) return; renderTabs(); renderGrid(); renderSel(); renderWorn(); renderActs(); renderPv(); };
-  const refresh = () => { pushPreview(); renderAll(); };
+  let hist = [], hi = -1;      // undo / redo of the preview
+  const commit = () => { const j = JSON.stringify(pv); if (hist[hi] !== j) { hist = hist.slice(0, hi + 1); hist.push(j); hi = hist.length - 1; if (hist.length > 80) { hist.shift(); hi--; } } };
+  const go = d => { const n = hi + d; if (n < 0 || n >= hist.length) return; hi = n; pv = JSON.parse(hist[hi]); pushPreview(); renderAll(); };
+  const refresh = () => { commit(); pushPreview(); renderAll(); };
 
   function primary() {
     if (!sel) return; const { c, v } = sel, emo = c === 'emote', own = owns(c, v);
@@ -108,6 +111,9 @@ export function initShop({ cur, apply, toast, name }) {
   }
   function act(k) {
     if (k === 'primary') return primary();
+    if (k === 'undo') return go(-1);
+    if (k === 'redo') return go(1);
+    if (k === 'locked') { for (const c in OPTS) if (!owns(c, pv[c])) pv[c] = DEFAULT_LOOK[c]; return refresh(); }
     if (k === 'reset') pv = { ...cur() };
     else if (k === 'blank') { pv = { ...cur() }; for (const c in OPTS) pv[c] = DEFAULT_LOOK[c]; }
     else if (k === 'rand') { for (const c in OPTS) { const o = Object.keys(OPTS[c].vals).filter(v => owns(c, v)); pv[c] = o[Math.random() * o.length | 0]; } }
@@ -115,7 +121,7 @@ export function initShop({ cur, apply, toast, name }) {
     else if (k === 'equip') { const p = {}; for (const c of diffs()) if (c === 'color' || c === 'accent' || owns(c, pv[c])) p[c] = pv[c]; apply(p); toast('Equipped!'); }
     else if (k === 'buyall') {
       const m = miss(), cost = m.reduce((s, c) => s + price(c, pv[c]), 0); if (gems() < cost) return toast('Not enough gems');
-      for (const c of m) buy(c, pv[c]); const p = {}; for (const c of diffs()) p[c] = pv[c]; apply(p); toast('Bought and equipped!');
+      for (const c of m) buy(c, pv[c]); const p = {}; for (const c of diffs()) if (!(c === 'head' || c === 'hands') || owns(c, pv[c])) p[c] = pv[c]; apply(p); toast('Bought and equipped!');
     }
     refresh();
   }
@@ -133,12 +139,12 @@ export function initShop({ cur, apply, toast, name }) {
       if (p.dataset.p === 'spin') auto = !auto; else if (p.dataset.p === 'walk') walk = !walk; else view = view === 'auto' ? 'char' : view === 'char' ? 'podium' : 'auto';
       return refresh();
     }
-    const it = q('.it'); if (it) { sel = { c: cat, v: it.dataset.v }; if (cat === 'emote') { pre?.emote(+it.dataset.v); renderAll(); } else { pv[cat] = it.dataset.v; refresh(); } }
+    const it = q('.it'); if (it) { sel = { c: cat, v: it.dataset.v }; if (cat === 'emote') { pre?.emote(+it.dataset.v); if (EMOTES[+it.dataset.v]?.gait) { walk = true; pre?.walk(true); } renderAll(); } else { pv[cat] = it.dataset.v; refresh(); } }
   });
-  const onKey = e => { if (e.code === 'Escape') close(); };
+  const onKey = e => { if (e.code === 'Escape') close(); else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') { go(e.shiftKey ? 1 : -1); e.preventDefault(); } else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyY') { go(1); e.preventDefault(); } };
   function close() { el.hidden = true; pre?.stop(); removeEventListener('keydown', onKey); }
   onGems(() => renderAll());
   return {
-    open() { pv = { ...cur() }; sel = null; el.hidden = false; if (!pre) pre = createPreview($('pvc')); pushPreview(); renderAll(); pre.start(); addEventListener('keydown', onKey); },
+    open() { pv = { ...cur() }; sel = null; hist = []; hi = -1; commit(); el.hidden = false; if (!pre) pre = createPreview($('pvc')); pushPreview(); renderAll(); pre.start(); addEventListener('keydown', onKey); },
   };
 }

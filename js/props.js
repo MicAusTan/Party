@@ -1,0 +1,60 @@
+import * as THREE from 'three';
+// Emote props (things your character holds or rides) and walk styles ("gaits"). World.hold / World.setGait use these.
+const M = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, flatShading: true, ...o }), BM = c => new THREE.MeshBasicMaterial({ color: c });
+const mk = (geo, mat, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); return m; };
+const B = (w, h, d, c, x, y, z) => mk(new THREE.BoxGeometry(w, h, d), M(c), x, y, z);
+const C = (rt, rb, h, c, x, y, z, seg = 10) => mk(new THREE.CylinderGeometry(rt, rb, h, seg), M(c), x, y, z);
+const S = (r, c, x, y, z, det = 1) => mk(new THREE.IcosahedronGeometry(r, det), M(c), x, y, z);
+const K = (r, h, c, x, y, z, seg = 8) => mk(new THREE.ConeGeometry(r, h, seg), M(c), x, y, z);
+const G = (...a) => { const g = new THREE.Group(); a.forEach(o => g.add(o)); return g; };
+const V = new THREE.Vector3();
+const every = (o, k, s, f, dt) => { o[k] = (o[k] || 0) - dt; if (o[k] <= 0) { o[k] = s; f(); } };
+const wp = g => g.getWorldPosition(V);
+export const SLOTS = { hand: [.55, .85, .45], front: [0, .85, .55], above: [0, 0, 0], ride: [0, 0, 0] };
+// bite / sip / lick: lifts the item toward the mouth now and then
+const lift = (item, t, dx = .4, dy = .5) => { const k = Math.max(0, Math.sin(t * 2.2)); item.position.set(-dx * k, dy * k, .1 * k); item.rotation.x = -k * .6; return k; };
+export const PROPS = {
+  popcorn: { slot: 'hand', build() { const it = G(C(.2, .15, .36, 0xe53935, 0, 0, 0), B(.06, .34, .03, 0xffffff, -.1, 0, .17), B(.06, .34, .03, 0xffffff, .1, 0, .17), ...[0, 1, 2, 3, 4].map(i => S(.07, i % 2 ? 0xfff3b0 : 0xffffff, Math.cos(i * 1.3) * .09, .22 + (i % 2) * .04, Math.sin(i * 1.3) * .09, 0))); return { g: G(it), tick(dt, t, w) { const k = lift(it, t); every(this, 'c', .4, () => { if (k > .5) { const p = wp(it); w.burst(p.x, p.y + .2, p.z, '#fff3b0', 3); } }, dt); } }; } },
+  coffee: { slot: 'hand', build() { const it = G(C(.1, .08, .2, 0xffffff, 0, 0, 0), C(.095, .095, .02, 0x3e2723, 0, .1, 0), B(.04, .1, .03, 0xffffff, .12, 0, 0)); return { g: G(it), tick(dt, t, w) { lift(it, t, .45, .55); every(this, 'c', .35, () => { const p = wp(it); w.burst(p.x, p.y + .25, p.z, '#ffffff', 1); }, dt); } }; } },
+  pizza: { slot: 'hand', build() { const it = G(K(.22, .5, 0xffb74d, 0, 0, 0, 3), S(.04, 0xd32f2f, 0, .02, .02, 0), S(.04, 0xd32f2f, .05, -.1, 0, 0), S(.04, 0x66bb6a, -.04, -.12, .02, 0)); it.rotation.x = Math.PI / 2; const g = G(it); return { g, tick(dt, t) { g.rotation.x = Math.sin(t * 2.2) > .4 ? -.5 : 0; g.position.y = Math.max(0, Math.sin(t * 2.2)) * .4; g.position.x = -Math.max(0, Math.sin(t * 2.2)) * .35; } }; } },
+  icecream: { slot: 'hand', build() { const it = G(K(.1, .3, 0xd9a15b, 0, 0, 0, 6), S(.14, 0xff9ecb, 0, .2, 0), S(.11, 0x9be8c9, 0, .36, 0), S(.04, 0xe53935, 0, .47, 0, 0)); it.children[0].rotation.x = Math.PI; return { g: G(it), tick(dt, t) { lift(it, t, .45, .5); } }; } },
+  umbrella: { slot: 'above', build() { const g = G(C(.025, .025, 1.3, 0x3a2a1a, .35, 1.25, 0), K(.7, .35, 0x4da3ff, .35, 1.95, 0, 12), S(.04, 0xffd93d, .35, 2.15, 0, 0)); return { g, tick(dt, t, w, e) { g.rotation.y += dt * .8; every(this, 'r', .08, () => w.fxBit(e, 'rain'), dt); } }; } },
+  boombox: { slot: 'front', build() { const sp = [-1, 1].map(k => mk(new THREE.CylinderGeometry(.09, .09, .05, 12), M(0x222222), k * .15, 0, .12)); sp.forEach(s => s.rotation.x = Math.PI / 2); const g = G(B(.5, .28, .2, 0x7e57c2, 0, 0, 0), ...sp, B(.4, .03, .03, 0xdddddd, 0, .17, 0)); return { g, tick(dt, t, w, e) { const k = 1 + .18 * Math.max(0, Math.sin(t * 9)); sp.forEach(s => s.scale.set(k, 1, k)); g.rotation.z = Math.sin(t * 4.5) * .05; every(this, 'n', .14, () => w.fxBit(e, 'notes'), dt); } }; } },
+  guitar: { slot: 'front', build() { const body = C(.22, .22, .08, 0xd84315, 0, -.15, 0); body.rotation.x = Math.PI / 2; const g = G(body, B(.06, .75, .04, 0x4e342e, 0, .35, 0), B(.1, .16, .04, 0x4e342e, 0, .78, 0)); g.rotation.z = -.5; return { g, tick(dt, t, w, e) { body.position.x = Math.sin(t * 11) * .015; every(this, 'n', .2, () => w.fxBit(e, 'notes'), dt); } }; } },
+  wand: { slot: 'hand', build() { const star = mk(new THREE.OctahedronGeometry(.1, 0), BM(0xfff176), 0, .52, 0); const g = G(C(.02, .02, .5, 0x4e342e, 0, .25, 0, 6), star); g.rotation.z = -.25; return { g, tick(dt, t, w, e) { star.rotation.y += dt * 4; every(this, 's', .1, () => w.fxBit(e, 'stardust'), dt); } }; } },
+  camera: { slot: 'front', build() { const lens = C(.09, .09, .12, 0x90a4ae, 0, 0, .12); lens.rotation.x = Math.PI / 2; const g = G(B(.34, .22, .16, 0x263238, 0, 0, 0), lens, B(.08, .05, .05, 0xffffff, .12, .13, 0)); return { g, tick(dt, t, w) { every(this, 'f', 2.2, () => { const p = wp(g); w.burst(p.x, p.y, p.z + .2, '#ffffff', 10); }, dt); } }; } },
+  lantern: { slot: 'hand', build() { const glow = S(.1, 0xffb347, 0, 0, 0, 1); glow.material = BM(0xffb347); const g = G(glow, C(.11, .11, .04, 0x37474f, 0, .14, 0), C(.11, .11, .04, 0x37474f, 0, -.14, 0), B(.02, .3, .02, 0x37474f, 0, .3, 0)); return { g, tick(dt, t, w, e) { g.rotation.z = Math.sin(t * 2) * .12; glow.scale.setScalar(1 + Math.sin(t * 9) * .08); every(this, 'f', .2, () => w.fxBit(e, 'fireflies'), dt); } }; } },
+  book: { slot: 'front', build() { const l = B(.22, .3, .03, 0x5d4037, -.12, 0, 0), r = B(.22, .3, .03, 0x5d4037, .12, 0, 0), pg = B(.2, .26, .02, 0xfff8e1, .12, 0, .03); const g = G(l, r, pg, B(.2, .26, .02, 0xfff8e1, -.12, 0, .03)); l.rotation.y = .35; r.rotation.y = -.35; return { g, tick(dt, t) { pg.rotation.y = -Math.abs(Math.sin(t * 1.4)) * 1.2; g.position.y = Math.sin(t * 1.2) * .02; } }; } },
+  flag: { slot: 'hand', build() { const cl = B(.55, .34, .03, 0xe53935, .3, .95, 0); const g = G(C(.025, .025, 1.3, 0x8d6e63, 0, .55, 0, 6), cl); return { g, tick(dt, t) { cl.rotation.y = Math.sin(t * 6) * .25; cl.position.z = Math.sin(t * 6) * .05; } }; } },
+  balloon: { slot: 'above', build() { const bl = S(.34, 0xff4d6d, .35, 2.7, 0, 1); bl.scale.y = 1.2; const g = G(bl, C(.01, .01, 1.5, 0xffffff, .35, 1.9, 0, 4)); return { g, tick(dt, t) { g.rotation.z = Math.sin(t * 1.6) * .06; } }; } },
+  rod: { slot: 'hand', build() { const rg = G(C(.015, .01, 1.4, 0x8d6e63, 0, .7, 0, 5)); rg.rotation.x = 1.0; const line = C(.004, .004, .9, 0xffffff, 0, .306, 1.178, 3), bob = S(.05, 0xe53935, 0, -.15, 1.178, 0), g = G(rg, line, bob); return { g, tick(dt, t, w) { rg.rotation.z = Math.sin(t * 1.5) * .05; line.rotation.x = bob.position.y = 0, line.rotation.x = Math.sin(t * 2) * .08; bob.position.y = -.15 + Math.sin(t * 3) * .03; every(this, 'c', 3.5, () => { const p = wp(bob); w.burst(p.x, p.y, p.z, '#4dd0ff', 10); }, dt); } }; } },
+  sparkler: { slot: 'hand', build() { const tip = mk(new THREE.IcosahedronGeometry(.05, 0), BM(0xffd54f), 0, .62, 0), g = G(C(.012, .012, .6, 0x9e9e9e, 0, .3, 0, 4), tip); g.rotation.z = -.2; return { g, tick(dt, t, w, e) { tip.scale.setScalar(.8 + Math.random() * .5); every(this, 's', .05, () => { const p = wp(tip); w.burst(p.x, p.y, p.z, '#ffd54f', 3); w.fxBit(e, 'stardust'); }, dt); } }; } },
+  // --- rides: they sit under the feet; the gait lifts the player and the prop goes with them ---
+  rocket: { slot: 'ride', build() { const fl = K(.16, .55, 0xff9f1a, 0, -.75, 0, 8); fl.rotation.x = Math.PI; fl.material = BM(0xff9f1a); const g = G(C(.17, .14, .85, 0xeeeeee, 0, -.5, 0), K(.17, .3, 0xe53935, 0, -.02, 0), B(.4, .04, .08, 0xe53935, 0, -.8, 0), B(.08, .04, .4, 0xe53935, 0, -.8, 0), fl); return { g, tick(dt, t, w, e, mv) { fl.scale.set(1, .8 + Math.sin(t * 30) * .25 + (mv ? .4 : 0), 1); every(this, 'e', .04, () => { const p = wp(g); w.burst(p.x, p.y - 1.1, p.z, '#ff9f1a', 2); }, dt); } }; } },
+  skate: { slot: 'ride', build() { const g = G(B(.38, .05, .95, 0x6d4c41, 0, -.06, 0), B(.38, .01, .8, 0xffd93d, 0, -.032, 0), ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => { const wh = C(.06, .06, .05, 0x212121, a * .2, -.12, b * .32, 8); wh.rotation.z = Math.PI / 2; return wh; })); return { g, tick(dt, t, w, e, mv) { if (mv) every(this, 's', .07, () => { const p = wp(g); w.burst(p.x, p.y - .1, p.z, '#ffd93d', 1); }, dt); } }; } },
+  broom: { slot: 'ride', build() { const g = G(B(.06, .06, 1.6, 0x8d6e63, 0, -.08, 0), K(.16, .5, 0xf9a825, 0, -.08, -.95, 6)); g.children[1].rotation.x = -Math.PI / 2; return { g, tick(dt, t, w, e) { every(this, 's', .08, () => w.fxBit(e, 'stardust'), dt); } }; } },
+  carpet: { slot: 'ride', build() { const c = B(1.1, .05, 1.2, 0xb71c1c, 0, -.06, 0), g = G(c, B(1.0, .055, .1, 0xffd93d, 0, -.06, .4), B(1.0, .055, .1, 0xffd93d, 0, -.06, -.4), ...[-1, 1].map(k => B(.04, .04, .14, 0xffd93d, k * .3, -.06, .66))); return { g, tick(dt, t) { c.rotation.z = Math.sin(t * 3) * .05; c.rotation.x = Math.sin(t * 2.2) * .04; } }; } },
+  cloud: { slot: 'ride', build() { const g = G(S(.4, 0xffffff, 0, -.22, 0), S(.3, 0xf1f6ff, .35, -.2, .1), S(.3, 0xffffff, -.35, -.2, -.05), S(.25, 0xf1f6ff, .05, -.18, -.3)); return { g, tick(dt, t, w, e) { g.rotation.y += dt * .5; every(this, 'm', .12, () => w.fxBit(e, 'mist'), dt); } }; } },
+  hover: { slot: 'ride', build() { const glow = mk(new THREE.PlaneGeometry(.4, 1.0), BM(0x4dd0ff), 0, -.1, 0); glow.rotation.x = Math.PI / 2; const g = G(B(.46, .06, 1.1, 0x263238, 0, -.06, 0), B(.4, .02, .9, 0x4dd0ff, 0, -.025, 0), glow, ...[-1, 1].map(k => C(.07, .09, .08, 0x546e7a, k * .15, -.1, -.5, 8))); return { g, tick(dt, t, w, e, mv) { glow.material.color.setHSL(.5 + Math.sin(t * 3) * .05, 1, .55 + Math.sin(t * 8) * .1); if (mv) every(this, 'h', .06, () => { const p = wp(g); w.burst(p.x, p.y - .15, p.z, '#4dd0ff', 2); }, dt); } }; } },
+  pogo: { slot: 'ride', build() { const sp = C(.04, .04, .7, 0xcfd8dc, 0, -.38, 0, 6), g = G(sp, B(.3, .05, .1, 0xe53935, 0, -.06, 0), B(.12, .05, .12, 0x37474f, 0, -.74, 0)); return { g, tick(dt, t, w, e) { sp.scale.y = .75 + .25 * Math.abs(Math.sin(w.t * 9)); } }; } },
+};
+// Walk styles: set fields of s (y lift, rx/rz tilt, sx/sy/sz squash, dry = extra spin per frame). mv = moving, t = time spent moving, w.t = world time.
+export const GAITS = {
+  pogo: (s, t, mv, dt, w) => { const ph = mv ? t * 9 : w.t * 5; s.y = Math.abs(Math.sin(ph)) * (mv ? .6 : .25); s.rz = mv ? Math.sin(ph) * .08 : 0; },
+  skate: (s, t, mv) => { s.y = .12; s.rx = mv ? .12 : 0; s.rz = mv ? Math.sin(t * 3) * .06 : 0; },
+  rocket: (s, t, mv, dt, w) => { s.y = .9 + Math.sin(w.t * 6) * .05; s.rx = mv ? .35 : 0; },
+  broom: (s, t, mv, dt, w) => { s.y = .55 + Math.sin(w.t * 4) * .05; s.rx = mv ? .2 : 0; s.rz = mv ? Math.sin(t * 3) * .1 : 0; },
+  carpet: (s, t, mv, dt, w) => { s.y = .5 + Math.sin(w.t * 3) * .08; s.rz = Math.sin(w.t * 2.2) * .1; s.rx = mv ? .08 : 0; },
+  cloud: (s, t, mv, dt, w) => { s.y = .5 + Math.sin(w.t * 2.5) * .07; },
+  moon: (s, t, mv, dt, w, e) => { if (mv) { s.rx = -.3; s.y = .02 + Math.abs(Math.sin(t * 10)) * .04; every(s, 'd', .15, () => w.dust(e, '#cfd8dc', 3), dt); } },
+  sneak: (s, t, mv) => { s.sy = .72; s.sx = s.sz = 1.06; s.rx = mv ? .35 : 0; },
+  ninja: (s, t, mv, dt, w, e) => { if (mv) { s.rx = .6; s.y = Math.abs(Math.sin(t * 14)) * .06; every(s, 'm', .08, () => w.fxBit(e, 'mist'), dt); } },
+  robot: (s, t, mv) => { if (mv) { const o = Math.floor(t * 6) % 2; s.rz = o ? .07 : -.07; s.y = o * .07; } },
+  dizzy: (s, t, mv) => { if (mv) { s.rz = Math.sin(t * 7) * .35; s.y = Math.abs(Math.sin(t * 7)) * .05; } },
+  crab: (s, t, mv) => { s.sx = 1.15; if (mv) { s.rz = Math.sin(t * 12) * .18; s.y = Math.abs(Math.sin(t * 12)) * .06; } },
+  spinw: (s, t, mv, dt) => { if (mv) s.dry = dt * 12; },
+  hover: (s, t, mv, dt, w) => { s.y = .28 + Math.sin(w.t * 4) * .04; s.rx = mv ? .12 : 0; s.rz = mv ? Math.sin(t * 2.5) * .06 : 0; },
+  skip: (s, t, mv) => { if (mv) { s.y = Math.abs(Math.sin(t * 7)) * .35; s.rz = Math.sin(t * 7) * .1; s.rx = .05; } },
+  tiptoe: (s, t, mv) => { s.sy = 1.12; s.sx = s.sz = .94; if (mv) { s.y = .08 + Math.abs(Math.sin(t * 12)) * .04; s.rx = -.08; } },
+  jelly: (s, t, mv) => { if (mv) { const k = Math.sin(t * 14); s.sx = s.sz = 1 - .15 * k; s.sy = 1 + .3 * k; s.y = Math.abs(Math.sin(t * 7)) * .15; } },
+};

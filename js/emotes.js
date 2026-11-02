@@ -22,21 +22,21 @@ export const EMOTES = [
   { n: 'Skull', ch: '💀', pose: 'sad', price: 45 },
   { n: 'Ghost', ch: '👻', pose: 'wiggle', burst: '#cfd8ff', price: 45 },
   { n: 'Rocket', ch: '🚀', pose: 'cheer', burst: '#4dd0e1', price: 50 },
-  { n: 'Pizza', ch: '🍕', price: 35 },
+  { n: 'Pizza', ch: '🍕', hold: true, prop: 'pizza', price: 35 },
   { n: 'Crown', ch: '👑', pose: 'cool', burst: '#ffd93d', price: 60 },
   { n: 'Money', ch: '🤑', pose: 'love', burst: '#7cf08a', price: 55 },
   { n: 'Brain', ch: '🧠', price: 40 },
   { n: 'Sweat', ch: '😅', pose: 'shake', price: 30 },
   { n: 'Mind blown', ch: '🤯', pose: 'shake', burst: '#ff9f1a', price: 55 },
-  { n: 'Ninja', ch: '🥷', price: 50 },
+  { n: 'Ninja run', ch: '🥷', gait: 'ninja', price: 50 },
   { n: 'Alien', ch: '👽', pose: 'tilt', burst: '#7cf08a', price: 50 },
   { n: 'Robot', ch: '🤖', pose: 'wiggle', price: 45 },
   { n: 'Cheers', ch: '🥂', pose: 'cheer', burst: '#ffd93d', price: 50 },
   { n: 'Diamond', ch: '💎', burst: '#77ddff', price: 60 },
   { n: 'Unicorn', ch: '🦄', pose: 'cool', burst: '#ff9ecb', price: 70 },
   { n: 'Eyes', ch: '👀', price: 30 },
-  { n: 'Balloon', ch: '🎈', price: 30 },
-  { n: 'Popcorn', ch: '🍿', price: 35 },
+  { n: 'Balloon', ch: '🎈', hold: true, prop: 'balloon', price: 30 },
+  { n: 'Popcorn', ch: '🍿', hold: true, prop: 'popcorn', price: 35 },
   { n: 'Zap', ch: '⚡', burst: '#ffd93d', price: 40 },
   { n: 'Rainbow', ch: '🌈', burst: '#4dd0e1', price: 55 },
   { n: 'Brr', ch: '🥶', pose: 'shake', burst: '#a5f3fc', price: 35 },
@@ -51,7 +51,7 @@ export const EMOTES = [
   { n: 'Peace', ch: '✌️', pose: 'cool', price: 30 },
   { n: 'Splash', ch: '🌊', burst: '#4dd0e1', price: 35 },
   { n: 'Cake', ch: '🎂', pose: 'cheer', burst: '#ff9ecb', price: 45 },
-  { n: 'Coffee', ch: '☕', price: 30 },
+  { n: 'Coffee', ch: '☕', hold: true, prop: 'coffee', price: 30 },
   { n: 'Gamer', ch: '🎮', pose: 'wiggle', price: 40 },
   { n: 'Lucky', ch: '🍀', pose: 'love', burst: '#7cf08a', price: 40 },
   { n: 'Zzz', ch: '💤', pose: 'sad', price: 30 },
@@ -59,11 +59,44 @@ export const EMOTES = [
   { n: 'Woof', ch: '🐶', pose: 'wiggle', price: 35 },
   { n: 'Bullseye', ch: '🎯', pose: 'cool', burst: '#ff4d6d', price: 45 },
   { n: 'Winner', ch: '🏆', pose: 'cheer', burst: '#ffd93d', price: 60 },
+  { n: 'Ice cream', ch: '🍦', hold: true, prop: 'icecream', price: 40 },
+  { n: 'Umbrella', ch: '☂️', hold: true, prop: 'umbrella', price: 50 },
+  { n: 'Boombox', ch: '📻', hold: true, prop: 'boombox', price: 60 },
+  { n: 'Guitar', ch: '🎸', hold: true, prop: 'guitar', price: 60 },
+  { n: 'Magic wand', ch: '🪄', hold: true, prop: 'wand', price: 55 },
+  { n: 'Camera', ch: '📷', hold: true, prop: 'camera', price: 45 },
+  { n: 'Lantern', ch: '🏮', hold: true, prop: 'lantern', price: 45 },
+  { n: 'Book', ch: '📖', hold: true, prop: 'book', price: 35 },
+  { n: 'Flag', ch: '🚩', hold: true, prop: 'flag', price: 40 },
+  { n: 'Pogo stick', ch: '🦘', gait: 'pogo', prop: 'pogo', price: 70 },
+  { n: 'Skateboard', ch: '🛹', gait: 'skate', prop: 'skate', price: 70 },
+  { n: 'Rocket ride', ch: '🚀', gait: 'rocket', prop: 'rocket', price: 110 },
+  { n: 'Broomstick', ch: '🧹', gait: 'broom', prop: 'broom', price: 90 },
+  { n: 'Magic carpet', ch: '🧞', gait: 'carpet', prop: 'carpet', price: 90 },
+  { n: 'Cloud ride', ch: '☁️', gait: 'cloud', prop: 'cloud', price: 80 },
+  { n: 'Moonwalk', ch: '🌙', gait: 'moon', price: 60 },
+  { n: 'Sneak', ch: '🤫', gait: 'sneak', price: 40 },
+  { n: 'Robot walk', ch: '🤖', gait: 'robot', price: 50 },
+  { n: 'Dizzy walk', ch: '😵', gait: 'dizzy', price: 40 },
+  { n: 'Crab walk', ch: '🦀', gait: 'crab', price: 45 },
+  { n: 'Spin walk', ch: '🌀', gait: 'spinw', price: 50 },
+  { n: 'Jelly walk', ch: '🍮', gait: 'jelly', price: 50 },
+  { n: 'Fishing', ch: '🎣', hold: true, prop: 'rod', price: 50 },
+  { n: 'Sparkler', ch: '🎇', hold: true, prop: 'sparkler', price: 45 },
+  { n: 'Hoverboard', ch: '🛸', gait: 'hover', prop: 'hover', price: 100 },
+  { n: 'Skipping', ch: '🏃', gait: 'skip', price: 40 },
+  { n: 'Tiptoe', ch: '🩰', gait: 'tiptoe', price: 40 },
 ];
+// extra particle effects for the plain pose emotes: name -> [particle kind, amount]
+const FXMAP = { Party: ['confetti', 16], Sad: ['rain', 12], Grr: ['embers', 10], Love: ['hearts', 12], Cool: ['sparkles', 10], Fire: ['flames', 14], Sleepy: ['mist', 8], Shock: ['electric', 10], Star: ['stardust', 14], Ghost: ['mist', 12], Rocket: ['embers', 14], Money: ['stardust', 12], Brain: ['electric', 10], Dance: ['confetti', 14], Clap: ['sparkles', 10], Lucky: ['petals', 10], Cake: ['confetti', 12], Brr: ['snow', 10], Zzz: ['mist', 8], Winner: ['stardust', 16], Diamond: ['sparkles', 12], Flex: ['embers', 8], 'Party face': ['confetti', 14], Bawl: ['rain', 10], Unicorn: ['sparkles', 12], Rainbow: ['confetti', 12], Zap: ['electric', 12], Splash: ['bubbles', 12], 'Mind blown': ['electric', 14] };
+EMOTES.forEach(e => { const f = FXMAP[e.n]; if (f) { e.fx = f[0]; e.fxn = f[1]; } });
+export const emoteTag = e => e.gait ? 'Move style' : e.hold ? 'Hold' : '';
 export function playEmote(world, id, i, mine) {
   const e = EMOTES[i], g = world.m.get(id)?.g; if (!e || !g) return;
+  if (e.gait) world.setGait(id, e.gait, e.prop); else if (e.hold) world.hold(id, e.prop);
   if (e.pose) world.emote(id, e.pose);
   world.popIcon(id, e.ch);
+  if (e.fx) world.fxMany(id, e.fx, e.fxn || 10);
   if (e.burst) world.burst(g.position.x, g.position.y + 1.6, g.position.z, e.burst, 14);
   if (mine) sfx('click');
 }

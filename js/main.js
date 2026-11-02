@@ -17,12 +17,12 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const net = new Net(), world = new World($('c'));
 const board = new Board({ net, world, esc, players: () => players, playMg: startRandomMg, onChange: () => lock(), fx: (t, a) => fx(t, a), onError: m => toast('⚠ ' + m + ' (please screenshot this!)', 8000) });
 let players = {}, me = null, mg = null, look = { ...DEFAULT_LOOK };
-const sim = {}, keys = {}; let cfg = { mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false, team: true, botSkill: 'mixed', fill: 0, turnT: 30 };   // sim: host-only free-roam positions
+const sim = {}, keys = {}; let cfg = { pets: true, mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false, team: true, botSkill: 'mixed', fill: 0, turnT: 30 };   // sim: host-only free-roam positions
 
 try { cfg = { ...cfg, ...JSON.parse(localStorage.getItem('pg-cfg') || '{}') }; } catch {}
 try { look = { ...look, ...JSON.parse(localStorage.getItem('pg-look') || '{}') }; $('name').value = localStorage.getItem('pg-name') || ''; } catch {}
 look = sanitizeLook(look);
-addEventListener('keydown', e => { if (document.getElementById('shop')?.hidden === false) return; keys[e.code] = true; });
+addEventListener('keydown', e => { if (document.getElementById('shop')?.hidden === false) return; keys[e.code] = true; if (e.code === 'KeyH' && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) $('hud').classList.toggle('off'); if (e.code === 'KeyP' && !e.repeat && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && emoOK() && players[me]?.pet && players[me].pet !== 'none') sendPet(); });
 addEventListener('keyup', e => keys[e.code] = false);
 const myName = () => {
   const n = $('name').value.trim() || 'Player' + (Math.random() * 90 + 10 | 0);
@@ -49,18 +49,41 @@ net.on('emote', (d, from) => { if (net.isHost) relayEmote(from, d.e); else if (d
 let podium = null;
 const endPodium = () => { podium?.end(); podium = null; };
 function podiumFor(order, ranks, o) { endPodium(); const me_ = podium = showPodium(world, players, order, ranks, { ...o, onEnd: () => { if (podium === me_) podium = null; } }); }
-function finalPodium(order, ranks) { if (order.length) { podiumFor(order, ranks, { secs: 7 }); finalGems(order, ranks); } }
-function finalGems(order, ranks) {
-  const i = order.indexOf(me); if (i < 0 || practice) return;
-  const r = ranks?.[i] ?? i; let g = r === 0 ? 20 : r === 1 ? 10 : r === 2 ? 5 : 0;
-  if (cfg.mode === 'board') g += (board.s?.stars?.[me] || 0) * 4;
-  if (g) { addGems(g); toast('+' + g + ' gems for the final standings', 2500); }
-}
-function awardGems(pl, rk, adj) {
+// ---- gems + end-of-game summary ----
+let stats = null, wasLive = false;
+const resetStats = () => { stats = { pl: [0, 0, 0, 0], mgs: 0, gems: new Map() }; };
+resetStats();
+const gain = (label, x) => { x = Math.round(x); if (x <= 0) return 0; addGems(x); stats.gems.set(label, (stats.gems.get(label) || 0) + x); return x; };
+const pf = n => Math.min(1.6, .7 + .1 * n);                                   // more players = bigger rewards
+function awardGems(pl, rk, adj) {                                              // per minigame
   const i = pl.indexOf(me); if (i < 0 || practice) return 0;
-  let g = gemsFor(rk[i], pl.length);
-  if (board.active) { g += Math.max(0, Math.round(board.rewardFor(me, rk[i], adj, pl.length) / 5)); if (board.s?.mega && rk[i] === 0) g += 5; }
-  g += claimDaily(); addGems(g); return g;
+  const n = pl.length, r = Math.min(rk[i], 3); stats.pl[r]++; stats.mgs++;
+  let t = gain('Minigame placements', gemsFor(rk[i], n) * pf(n));
+  if (board.active) { t += gain('Coins won in minigames', board.rewardFor(me, rk[i], adj, n) / 4); if (board.s?.mega && rk[i] === 0) t += gain('Mega minigame wins', 6 * pf(n)); }
+  return t + gain('Daily bonus', claimDaily());
+}
+const isCustom = p => !!p && (p.stage !== 'night' || p.ped !== 'classic');
+function finalPodium(order, ranks) {
+  if (!order.length) return;
+  const secs = 7 + (!players[order[0]]?.bot && isCustom(players[order[0]]) ? 5 : 0);                      // give a customised winner's podium time to be seen
+  podiumFor(order, ranks, { secs }); finalGems(order, ranks, secs);
+  if (net.isHost) setTimeout(() => { endPodium(); if (partyState) stopParty(); else board.quit(); }, (secs + 1.2) * 1000);   // the game ends by itself now
+}
+function finalGems(order, ranks, secs) {
+  const i = order.indexOf(me); if (i < 0 || practice) return;
+  const n = order.length, r = ranks?.[i] ?? i, rf = Math.max(.7, Math.min(2, stats.mgs / 8)), inBoard = cfg.mode === 'board';
+  const stars = inBoard ? board.s?.stars?.[me] || 0 : 0, coins = inBoard ? board.s?.coins?.[me] || 0 : players[me]?.score || 0;
+  gain('Final placement', [25, 15, 8][r] * pf(n) * rf); gain('Stars', stars * 8 * Math.min(1.3, pf(n))); gain('Coins at the end', coins / 5);
+  const sum = { r, n, stars, coins, pl: [...stats.pl], mgs: stats.mgs, gems: [...stats.gems], total: [...stats.gems.values()].reduce((a, b) => a + b, 0) };
+  setTimeout(() => showSummary(sum), (secs + .5) * 1000); resetStats();
+}
+function showSummary(m) {
+  let el = document.getElementById('summary'); if (!el) { el = document.createElement('div'); el.id = 'summary'; el.className = 'box'; document.body.append(el); el.onclick = e => { if (e.target.closest('[data-x]')) el.hidden = true; }; }
+  const ord = ['1st', '2nd', '3rd'], place = m.r === 0 ? 'Winner!' : (ord[m.r] || (m.r + 1) + 'th') + ' place';
+  el.innerHTML = `<h2>Game summary</h2><div class="srow big"><span>Final result</span><b>${place}</b></div><div class="srow"><span>Stars</span><b>${m.stars}</b></div><div class="srow"><span>Coins</span><b>${m.coins}</b></div>` +
+    `<div class="lbl">Minigames played: ${m.mgs}</div><div class="srow"><span>1st places</span><b>${m.pl[0]}</b></div><div class="srow"><span>2nd places</span><b>${m.pl[1]}</b></div><div class="srow"><span>3rd places</span><b>${m.pl[2]}</b></div><div class="srow"><span>Other</span><b>${m.pl[3]}</b></div>` +
+    `<div class="lbl">Gems earned</div>${m.gems.map(([l, x]) => `<div class="srow"><span>${l}</span><b>+${x}</b></div>`).join('')}<div class="srow big"><span>Total</span><b>+${m.total}</b></div><div class="srow"><span>New balance</span><b>${gemBal()}</b></div><button class="pri" data-x="1">Continue</button>`;
+  el.hidden = false;
 }
 const rankBy = (ids, key) => { const o = [...ids].sort((a, b) => key(b) - key(a)); return [o, o.map(id => o.findIndex(x => key(x) === key(id)))]; };
 
@@ -70,7 +93,9 @@ $('room').onclick = () => navigator.clipboard?.writeText($('room').textContent).
 const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 let lookOpen = false, folded = false, party = null, partyState = null; const queued = [];   // party: host-only engine; partyState: what everyone renders
 function lock() {
+  { const live = !!(board.active || partyState); if (live && !wasLive) resetStats(); wasLive = live; }
   const inMg = !!mg, inGame = board.active || !!partyState, lobby = !inMg && !inGame, host = net.isHost;
+  world.setPets(!inMg || petsOn());          // pets follow you in minigames too unless the host turned that off (laggy machines)
   const n = Object.keys(players).length, need = practice ? 1 : 2;
   $('panel').classList.toggle('compact', !lobby); $('panel').classList.toggle('folded', folded);
   $('fold').textContent = folded ? '+' : '–';
@@ -102,7 +127,16 @@ function setPlayers(p) {
   $('players').innerHTML = Object.values(players).map(q => `<div style="color:${q.color}">${q.id === 'host' ? '👑' : '●'} ${esc(q.name)}${q.title && q.title !== 'none' ? `<small> ${OPTS.title.vals[q.title]}</small>` : ''} <b>${q.score || 0}</b></div>`).join('');
   lock();
 }
-const pushLobby = () => { setPlayers(players); net.broadcast('lobby', players); };
+const pushLobby = () => { setPlayers(players); net.broadcast('lobby', players); net.broadcast('opt', { pets: cfg.pets !== false }); };
+let petsOpt = true; const petsOn = () => net.isHost ? cfg.pets !== false : petsOpt;
+net.on('opt', d => { petsOpt = d.pets !== false; lock(); });
+const lastPet = {};
+function relayPet(id) {                    // host: validate + rate-limit, play, tell everyone
+  if (!players[id]?.pet || players[id].pet === 'none') return; const t = performance.now(); if (t - (lastPet[id] || 0) < 1800) return; lastPet[id] = t;
+  world.petPet(id); net.broadcast('petpet', { id });
+}
+function sendPet() { const t = performance.now(); if (t - (lastPet.me || 0) < 1800) return; lastPet.me = t; if (net.isHost) relayPet(me); else { world.petPet(me); net.send('petpet', {}); } }
+net.on('petpet', (d, from) => { if (net.isHost) relayPet(from); else if (d.id !== me) world.petPet(d.id); });
 function setLook(patch, temp) {
   look = { ...look, ...patch }; if (!temp) try { localStorage.setItem('pg-look', JSON.stringify(look)); } catch {}
   if (!me) return;                       // customizing from the menu, before joining
@@ -180,7 +214,7 @@ function enter(code) {
     $('settingsBtn').onclick = () => $('settings').hidden = false;
     $('settingsClose').onclick = () => $('settings').hidden = true;
     $('boardSel').innerHTML = Object.entries(BOARDS).map(([k, b]) => `<option value="${k}">${b.name}</option>`).join('') + '<option value="random">🎲 Random board</option>';
-    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; $('team').checked = cfg.team !== false; $('botSkill').value = cfg.botSkill; $('turnT').value = cfg.turnT; $('fill').value = cfg.fill; syncModeUI();
+    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; $('team').checked = cfg.team !== false; $('petsOn').checked = cfg.pets !== false; $('botSkill').value = cfg.botSkill; $('turnT').value = cfg.turnT; $('fill').value = cfg.fill; syncModeUI();
     $('rounds').innerHTML = [[4, 10], [8, 20], [12, 30], [16, 40], [20, 50], [30, 75]].map(([n, m]) => `<option value="${n}">${n} rounds (~${m} min)</option>`).join(''); $('rounds').value = cfg.rounds;
     $('pool').innerHTML = Object.entries(MINIGAMES).map(([k, g]) => `<label><input type="checkbox" data-mg="${k}"${cfg.off.includes(k) ? '' : ' checked'}> ${esc(g.name)}</label>`).join('');
     $('settings').onchange = e => {
@@ -191,6 +225,7 @@ function enter(code) {
       else if (e.target.id === 'rounds') cfg.rounds = +e.target.value;
       else if (e.target.id === 'turnT') cfg.turnT = +e.target.value;
       else if (e.target.id === 'team') cfg.team = e.target.checked;
+      else if (e.target.id === 'petsOn') { cfg.pets = e.target.checked; pushLobby(); }
       else if (e.target.id === 'botSkill') cfg.botSkill = e.target.value;
       else if (e.target.id === 'fill') cfg.fill = +e.target.value;
       else if (e.target.dataset.mg) { const k = e.target.dataset.mg; cfg.off = cfg.off.filter(x => x !== k); if (!e.target.checked) cfg.off.push(k); }
@@ -382,7 +417,9 @@ requestAnimationFrame(loop);
 function burstAt(id, c, n) { const g = world.m.get(id)?.g; if (g) world.burst(g.position.x, g.position.y + 1, g.position.z, c, n); }
 function popup(t) { $('banner').innerHTML = `<h2>${t}</h2>`; setTimeout(() => { if (!mg) $('banner').innerHTML = ''; }, 900); }
 function fx(t, a) {
-  if (t === 'roll') { sfx('roll'); popup('🎲 ' + a); return; }
+  if (t === 'diceSkip') { world.skipDice(); return; }
+  if (t === 'dice') { sfx('roll'); world.rollDice(a.id, a.vals, players[a.id]?.dice || 'classic'); return; }
+  if (t === 'roll') { popup('🎲 ' + a); return; }
   if (t === 'win' && board.s) { const s = board.s, ids = s.order.filter(id => players[id]), [o, r] = rankBy(ids, id => s.stars[id] * 1e6 + s.coins[id]); finalPodium(o, r); }
   if (t === 'mega') { sfx('star'); popup('⭐ MEGA MINIGAME ⭐'); return; }
   sfx(t);

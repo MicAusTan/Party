@@ -59,7 +59,15 @@ export function arena(ctx, { radius = 11.5, disc: withDisc = true, set, shove = 
   const ku2 = e => { if (grab && e.code === 'KeyE') { if (host) setGrab(ctx.me, false); else ctx.send({ gr: 0 }); } };
   const pd = e => { if (shove && e.button === 0 && !e.target.closest?.('button,input,select')) fire(); };
   addEventListener('keydown', kd); addEventListener('keyup', ku); addEventListener('keydown', kd2); addEventListener('keyup', ku2); addEventListener('pointerdown', pd);
-  const links = {}; let prevHit = {};
+  const links = {}, hands = {}, punch = {}, prevL = {}, holdOf = {}; let prevHit = {};
+  const stopHands = W.addFrame(dt => {           // hands: a punch when you shove, a hand on the player you grip
+    for (const id of ids) {
+      const e = W.m.get(id); if (!e) continue; let on = false, x = 0, y = 0, z = 0, spin = 0;
+      if (punch[id] > 0) { punch[id] -= dt; const ext = Math.sin(Math.min(1, 1 - punch[id] / .28) * Math.PI), ry = e.g.rotation.y; x = e.g.position.x + Math.sin(ry) * (.5 + ext * .9); z = e.g.position.z + Math.cos(ry) * (.5 + ext * .9); y = e.g.position.y + .85; on = true; spin = 3; }
+      else if (holdOf[id]) { const T = W.m.get(holdOf[id])?.g.position; if (T) { const dx = T.x - e.g.position.x, dz = T.z - e.g.position.z, d = Math.hypot(dx, dz) || 1; x = T.x - dx / d * .55; z = T.z - dz / d * .55; y = T.y + .9; on = true; } }
+      if (on) { const m = hands[id] ??= W.handMesh(id); if (m) { m.visible = true; m.position.set(x, y, z); m.rotation.y += spin * dt; } } else if (hands[id]) hands[id].visible = false;
+    }
+  });
   return {
     ids, st, S,
     input() {
@@ -104,7 +112,7 @@ export function arena(ctx, { radius = 11.5, disc: withDisc = true, set, shove = 
       for (const id of ids) {
         const q = p[id], e = W.m.get(id); if (!q || !e) continue; if (first) W.warp(id, q[0], q[1]); else W.set(id, q[0], q[1]); e.g.visible = q[2] !== 0;
         if (q[3] && !prevHit[id]) { sfx('shove'); W.hop(id, .35); W.burst?.(q[0], .8, q[1], '#ffffff', 8); } prevHit[id] = q[3];
-        if (q[5]) W.lean(id, .5);
+        if (q[5]) W.lean(id, .5); if (q[5] && !prevL[id]) punch[id] = .28; prevL[id] = q[5]; holdOf[id] = q[4] >= 0 && q[2] ? ids[q[4]] : null;
         const k = q[4] >= 0 && q[2] ? ids[q[4]] : null, T = k && p[k];                      // grip line between holder and held
         if (T) { const m = links[id] ??= (() => { const b = new THREE.Mesh(new THREE.BoxGeometry(.1, .1, 1), new THREE.MeshBasicMaterial({ color: 0xff9f1a })); W.scene.add(b); return b; })(); const dx = T[0] - q[0], dz = T[1] - q[1], d = Math.hypot(dx, dz) || .01; m.visible = true; m.position.set((q[0] + T[0]) / 2, .8, (q[1] + T[1]) / 2); m.scale.z = d; m.rotation.y = Math.atan2(dx, dz); }
         else if (links[id]) links[id].visible = false;
@@ -112,6 +120,7 @@ export function arena(ctx, { radius = 11.5, disc: withDisc = true, set, shove = 
       first = false;
     },
     cleanup() {
+      stopHands(); Object.values(hands).forEach(m => { W.scene.remove(m); });
       removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('keydown', kd2); removeEventListener('keyup', ku2); removeEventListener('pointerdown', pd); Object.values(links).forEach(m => { W.scene.remove(m); m.geometry.dispose(); m.material.dispose(); }); if (S) S.cleanup(); else { W.scene.remove(disc); W.showDeco(true); }
       ids.forEach(id => { const g = W.m.get(id)?.g; if (g) g.visible = true; });
     },

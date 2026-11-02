@@ -1,4 +1,4 @@
-import { EMOTES } from './emotes.js';
+import { EMOTES, emoteTag } from './emotes.js';
 import { getSet } from './wallet.js';
 // Radial emote wheel. Hold G, move the mouse toward a slice, release G to play it. Tap G (or the 😀 button) to keep it open and click.
 // 1-8 pick a slice, scroll / arrow keys / the arrows in the middle turn the page. Mouse movement is accumulated (works under pointer lock).
@@ -12,7 +12,7 @@ export function initWheel({ ok, send }) {
   const pages = () => Math.max(1, Math.ceil(getSet().length / 8)), R = 118;
   function mark() {
     ring.querySelectorAll('button').forEach((b, k) => b.classList.toggle('on', k === hov));
-    const e = slots[hov] != null ? EMOTES[slots[hov]] : null; nm.textContent = e ? e.ch + ' ' + e.n : 'Emotes';
+    const e = slots[hov] != null ? EMOTES[slots[hov]] : null; nm.textContent = e ? e.ch + ' ' + e.n + (emoteTag(e) ? ' · ' + emoteTag(e).toLowerCase() : '') : 'Emotes';
   }
   function draw() {
     slots = getSet().slice(page * 8, page * 8 + 8);

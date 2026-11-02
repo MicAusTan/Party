@@ -10,8 +10,8 @@ const ITEMS = {
   dbl: { n: 'Double Dice', e: '🎲', c: 6, d: 'Next roll is two dice' },
   shield: { n: 'Shield', e: '🛡️', c: 5, d: 'Passive: blocks the next theft, swap or pickpocket', p: true },
   magnet: { n: 'Star Magnet', e: '🧲', c: 10, d: 'The ⭐ jumps 5-8 spaces ahead of you' },
-  swap: { n: 'Swap', e: '🔄', c: 9, d: 'Trade places with a random rival' },
-  steal: { n: 'Coin Thief', e: '💰', c: 7, d: 'Steal 5 🪙 from the richest rival' },
+  swap: { n: 'Swap', e: '🔄', c: 9, d: 'Trade places with a rival of your choice' },
+  steal: { n: 'Coin Thief', e: '💰', c: 7, d: 'Rob a rival of your choice (up to 5 🪙)' },
 };
 const rand = n => Math.random() * n | 0;
 
@@ -27,6 +27,9 @@ export class Board {
       const b = e.target.closest('button'); if (!b || b.disabled) return;
       if (b.id === 'roll') this.tryRoll();
       else if (b.dataset.a === 'force') { if (o.net.isHost) this.force(); }
+      else if (b.dataset.a === 'skiproll') { if (o.net.isHost) this.skipRoll(); }
+      else if (b.dataset.a === 'hide') { this.hideUI = !this.hideUI; this.render(); }
+      else if (b.dataset.a === 'guide') { this.showGuide = !this.showGuide; this.render(); }
       else if (b.dataset.a) o.net.isHost ? this.act('host', { a: b.dataset.a, k: b.dataset.k }) : o.net.send('act', { a: b.dataset.a, k: b.dataset.k });
     };
   }
@@ -49,6 +52,7 @@ export class Board {
     if (s.phase === 'roll') this.roll(id);
     else if (s.phase === 'choose') this.act(id, { a: 'go', k: s.opts[rand(s.opts.length)] });
     else if (s.phase === 'shop' || s.phase === 'slot') this.act(id, { a: 'leave' });
+    else if (s.phase === 'target') this.act(id, { a: 'target', k: s.pick.opts[rand(s.pick.opts.length)] });
   }
   // ---- both sides
   tryRoll() {
@@ -66,11 +70,13 @@ export class Board {
     this.hot = d.hot || [];
     this.safe('sky', () => this.o.world.setSky(B.sky ? (B.skyFixed ?? (Math.min(d.round, d.rounds) - 1) / Math.max(1, d.rounds - 1)) : null));
     if (pv) this.safe('fx', () => this.diff(pv, d)); this.prev = JSON.parse(JSON.stringify(d));
-    { const live = ['roll', 'choose', 'shop', 'slot'].includes(d.phase) && d.limit && !this.o.players()[d.order[d.turn]]?.bot; this.tl = live ? d.limit : null; }
+    { const live = ['roll', 'choose', 'shop', 'slot', 'target'].includes(d.phase) && d.limit && !this.o.players()[d.order[d.turn]]?.bot; this.tl = live ? d.limit : null; }
     this.safe('hud', () => this.render()); this.safe('change', () => this.o.onChange());
   }
   diff(a, b) {
     const f = this.o.fx; if (!f) return;
+    if (b.phase === 'rolling' && a.phase !== 'rolling') f('dice', { id: b.order[b.turn], vals: b.dice });
+    if (b.skip !== a.skip) f('diceSkip');
     if (b.phase === 'moving' && a.phase !== 'moving') f('roll', b.roll);
     for (const id of b.order) {
       if (a.pos[id] !== undefined && a.pos[id] !== b.pos[id] && b.phase === 'moving') { f('step', id); this.o.world.hop(id, .4); }      // every step is a little hop
@@ -169,7 +175,7 @@ export class Board {
     const W = this.o.world, s = this.s; if (!s || !B || W.stageUp > 0) return;
     const tn = Math.tan(W.cam.fov * Math.PI / 360), asp = W.cam.aspect || 16 / 9, b = B.bounds;
     const overview = () => { const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, d = Math.max((b.x1 - b.x0) / 2 / (tn * asp), (b.z1 - b.z0) / 2 * .85 / tn) * 1.05; return [[cx, d * .8, cz + d * .6], [cx, 0, cz]]; };
-    const cur = s.order[s.turn], e = W.m.get(cur), acting = ['roll', 'moving', 'choose', 'shop', 'slot'].includes(s.phase) && e && !this.mapView;
+    const cur = s.order[s.turn], e = W.m.get(cur), acting = ['roll', 'rolling', 'moving', 'choose', 'shop', 'slot', 'target'].includes(s.phase) && e && !this.mapView;
     let P, L;
     if (acting) {
       const H = B.cam?.h ?? 9.5, K = B.cam?.back ?? 8; let fx = e.g.position.x, fz = e.g.position.z, spread = 0; const fy = e.by || 0;
@@ -189,20 +195,33 @@ export class Board {
     if (mine && s.phase === 'roll') act = '<button id="roll">🎲 Roll (Space)</button>' + inv.filter(k => !ITEMS[k].p).map(k => `<button data-a="use" data-k="${k}">${ITEMS[k].e} Use ${ITEMS[k].n}</button>`).join('');
     if (mine && s.phase === 'shop') act = '<b>🛒 Shop</b>' + (s.stock || []).map(k => { const t = ITEMS[k]; return `<button data-a="buy" data-k="${k}"${coins < t.c || inv.length >= MAXI ? ' disabled' : ''}>${t.e} ${t.n} (${t.c}🪙)<br><small>${t.d}</small></button>`; }).join('') + '<button data-a="leave">Leave shop</button>';
     if (mine && s.phase === 'slot') act = '<b>🎰 Slot machine</b>' + [3, 6, 10].map(b => `<button data-a="bet" data-k="${b}"${coins < b ? ' disabled' : ''}>Bet ${b} 🪙</button>`).join('') + '<button data-a="leave">Walk away</button>';
+    if (mine && s.phase === 'target') act = `<b>${s.pick.k === 'duel' ? '⚔️ Who do you duel?' : s.pick.k === 'thief' ? '🦹 Who do you rob?' : '🔄 Who do you swap with?'}</b>` + s.pick.opts.map(v => `<button data-a="target" data-k="${v}">${nm(v)} · 🪙${s.coins[v]} ⭐${s.stars[v]}${s.items[v]?.includes('shield') && s.pick.k !== 'duel' ? ' 🛡️' : ''}</button>`).join('');
+    let extra = ''; if (s.phase === 'duelshow' && s.duel) { const d = s.duel, face = v => v == null ? '🎲' : ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'][v]; extra = `<div class="duelbox"><div>${nm(d.a)}<span class="die${d.ra == null ? ' roll' : ''}">${face(d.ra)}</span></div><b>VS</b><div>${nm(d.b)}<span class="die${d.rb == null ? ' roll' : ''}">${face(d.rb)}</span></div><div class="dres">${d.ra == null ? 'Rolling...' : d.w ? nm(d.w) + ' wins ' + d.n + ' 🪙!' : "It's a tie!"}</div></div>`; }
+    if (s.phase === 'rolling') act = this.o.net.isHost ? '<button data-a="skiproll">Skip roll animation</button>' : '<i>Rolling...</i>';
     if (mine && s.phase === 'choose') act = '<b>🔀 Choose your path</b>' + s.opts.map(k => `<button data-a="go" data-k="${k}">${B.sp[k].label || 'Go this way'}</button>`).join('');
-    if (this.o.net.isHost && !mine && ['roll', 'choose', 'shop', 'slot'].includes(s.phase) && !ps[cur]?.bot) act = `<button data-a="force">⏩ ${s.phase === 'roll' ? 'Roll for' : 'Skip'} ${nm(cur)}</button>`;     // host override: nobody has to wait for an AFK player
-    el.innerHTML = `<b>${B.name} · Round ${Math.min(s.round, s.rounds)} / ${s.rounds}</b>${B.sp.some(p => p.type === 'jackpot') ? ' · 💰 Jackpot ' + (s.pot ?? 0) : ''} <small style="opacity:.7">[V] ${this.mapView ? 'follow player' : 'map view'}</small>` + (this.tl != null ? ` <b>⏱ <span id="tl">${Math.max(0, Math.ceil(this.tl))}</span>s</b>` : '') +
+    if (this.o.net.isHost && !mine && ['roll', 'choose', 'shop', 'slot', 'target'].includes(s.phase) && !ps[cur]?.bot) act = `<button data-a="force">⏩ ${s.phase === 'roll' ? 'Roll for' : 'Skip'} ${nm(cur)}</button>`;     // host override: nobody has to wait for an AFK player
+    this.drawGuide(); if (this.hideUI) { el.innerHTML = '<button class="ghost mini" data-a="hide">Show board ▸</button>'; return; }
+    el.innerHTML = '<span class="bbtns"><button class="ghost mini" data-a="guide">Guide</button><button class="ghost mini" data-a="hide">Hide</button></span>' + `<b>${B.name} · Round ${Math.min(s.round, s.rounds)} / ${s.rounds}</b>${B.sp.some(p => p.type === 'jackpot') ? ' · 💰 Jackpot ' + (s.pot ?? 0) : ''} <small style="opacity:.7">[V] ${this.mapView ? 'follow player' : 'map view'}</small>` + (this.tl != null ? ` <b>⏱ <span id="tl">${Math.max(0, Math.ceil(this.tl))}</span>s</b>` : '') +
       s.order.map(id => `<div style="color:${ps[id]?.color}">${id === cur && (s.phase === 'roll' || s.phase === 'shop' || s.phase === 'choose' || s.phase === 'slot') ? '▶ ' : ''}${nm(id)} 🪙${s.coins[id]} ⭐${s.stars[id]} ${(s.items[id] || []).map(k => ITEMS[k].e).join('')}</div>`).join('') +
       `<div>${s.log}</div>` + (s.phase === 'end' ? `<h3>🏆 ${nm(s.winner)} wins!</h3>` : '') + act +
-      `<div style="font-size:11px;opacity:.65;margin-top:6px">🔵+3 🔴−3 🟢event 🟣shop 🟠duel ⚡dash 🦹thief 🔄swap 🎰slots${B.sp.some(p => p.type === 'vent') ? ' 💨geyser 🔨forge 🌋vent' : ''}${B.sp.some(p => p.type === 'jackpot') ? ' 🎡roulette 💰jackpot 🚇metro' : ''}${B.sp.some(p => p.type === 'king') ? ' ♞fork ♛roll-again ♝shield ♚check' : ''} · ⭐ = walk onto it with 20🪙 to buy</div>`;
+      extra;
   }
   // ---- host only
   push() { this.apply(this.s); this.o.net.broadcast('board', this.s); this.safe('bot', () => this.botTurn()); }
+  drawGuide() {           // the "what does each square do" sheet (it used to be a long legend under the board panel)
+    let gd = document.getElementById('guide'); if (!gd) { gd = document.createElement('div'); gd.id = 'guide'; gd.className = 'box'; gd.hidden = true; document.body.appendChild(gd); gd.onclick = e => { if (e.target.closest('[data-g]')) { this.showGuide = false; gd.hidden = true; } }; }
+    gd.hidden = !this.showGuide || !this.active; if (gd.hidden || !B) return;
+    const T = { blue: ['🔵', 'Blue', '+3 coins'], red: ['🔴', 'Red', '-3 coins'], green: ['🟢', 'Event', 'a random event: treasure, taxes, a gift, a teleport...'], shop: ['🟣', 'Shop', 'buy items with coins'], duel: ['🟠', 'Duel', 'pick a rival: you both roll a die, the higher roll wins up to 5 coins'], dash: ['⚡', 'Dash', '3 free spaces forward'], thief: ['🦹', 'Thief', 'pick a rival to rob (up to 5 coins; a shield blocks it)'], swap: ['🔄', 'Swap', 'pick a rival and trade places (a shield blocks it)'], slot: ['🎰', 'Slots', 'bet coins on the slot machine'], warp: ['🌀', 'Warp', 'jump across the map'], toll: ['🪙', 'Toll', 'the bridge costs up to 3 coins'], geyser: ['💨', 'Geyser', 'blasts you 2-6 spaces forward'], forge: ['🔨', 'Forge', 'pay 5 coins for a random item'], vent: ['🌋', 'Vent', 'erupts: re-rolls the scorching tiles and drains 2 coins from each rival'], roulette: ['🎡', 'Roulette', 'a gamble: mostly small wins, sometimes a loss'], jackpot: ['💰', 'Jackpot', 'take the shared pot (it grows every round)'], metro: ['🚇', 'Metro', 'ride to another station'], knight: ['♞', 'Knight', 'a fork: take up to 2 coins from each of 2 rivals'], queen: ['♛', 'Queen', 'roll again'], bishop: ['♝', 'Bishop', 'a free shield (or 3 coins if your bag is full)'], king: ['♚', 'King', 'CHECK: take up to 4 coins from the richest rival'] };
+    const here = [...new Set(B.sp.map(p => p.type))].filter(t => T[t]);
+    gd.innerHTML = '<div class="top"><b>Board guide</b><button class="ghost mini" data-g="1">Close</button></div>' + here.map(t => `<div class="grow"><span>${T[t][0]}</span><div><b>${T[t][1]}</b> ${T[t][2]}</div></div>`).join('') +
+      '<div class="grow"><span>⭐</span><div><b>Star</b> walk onto it with 20 coins to buy it. Most stars wins, coins break ties.</div></div><div class="lbl">Items</div>' + Object.values(ITEMS).map(t => `<div class="grow"><span>${t.e}</span><div><b>${t.n}</b> (${t.c} coins) ${t.d}</div></div>`).join('');
+  }
   botTurn() {
     const s = this.s, id = s?.order[s.turn]; if (!this.active || !this.o.players()[id]?.bot) return;
     if (s.phase === 'roll') this.later(() => this.roll(id), 900); else if (s.phase === 'shop') this.later(() => this.act(id, { a: 'leave' }), 700);
     else if (s.phase === 'slot') this.later(() => this.act(id, s.coins[id] >= 15 ? { a: 'bet', k: 3 } : { a: 'leave' }), 800);
     else if (s.phase === 'choose') { const o = s.opts; this.later(() => this.act(id, { a: 'go', k: o[rand(o.length)] }), 700); }
+    else if (s.phase === 'target') { const k = s.pick.k, o = s.pick.opts, v = k === 'thief' ? [...o].sort((a, b) => s.coins[b] - s.coins[a])[0] : o[rand(o.length)]; this.later(() => this.act(id, { a: 'target', k: v }), 1100); }
   }
   start(rounds, board = 'grove', limit = 0) {
     setBoard(board); const ps = this.o.players(), order = Object.keys(ps), s = { board, pot: 8, rounds, limit: +limit || 0, round: 1, turn: 0, order, pos: {}, coins: {}, stars: {}, items: {}, next: {}, phase: 'roll', star: B.starSpots[rand(B.starSpots.length)], mon: B.monster ? B.monster.start : -1, hot: [], log: 'Game start!' };
@@ -214,15 +233,18 @@ export class Board {
   roll(id) {
     const s = this.s; if (!this.active || !this.o.net.isHost || s.phase !== 'roll' || s.order[s.turn] !== id) return;
     const m = s.next[id]; s.next[id] = null;
-    let left = m === 'big' ? 4 + rand(5) : m === 'dbl' ? 2 + rand(6) + rand(6) : 1 + rand(6);
-    s.roll = left; s.phase = 'moving'; s.log = `${this.name(id)} rolled ${left}!`; this.push();
-    this.later(() => this.walk(id, left), 500);
+    let left, why = '', dice;
+    if (m === 'dbl') { const a = 1 + rand(6), b = 1 + rand(6); left = a + b; dice = [a, b]; why = ` (double dice: ${a} + ${b})`; }
+    else if (m === 'big') { left = 4 + rand(5); const lo = Math.max(1, left - 6), hi = Math.min(6, left - 1), a = lo + rand(hi - lo + 1); dice = [a, left - a]; why = ' (big dice!)'; }
+    else { left = 1 + rand(6); dice = [left]; }
+    s.roll = left; s.dice = dice; s.why = why; s.phase = 'rolling'; s.log = `${this.name(id)} is rolling...`; this.push();      // the dice tumble for ~2s, then the piece moves
+    this.later(() => this.finishRoll(id), 2000);
   }
   walk(id, left) {       // advance one space at a time; forks pause for a choice
     const s = this.s; if (!this.active) return;
     if (left <= 0) return void this.later(() => this.land(id), 450);
     const nx = B.sp[s.pos[id]].next;
-    if (nx.length > 1) { s.phase = 'choose'; s.opts = nx; s.left = left; s.log = `${this.name(id)} reached a fork!`; return this.push(); }
+    if (nx.length > 1) { s.phase = 'choose'; s.opts = nx; s.left = left; s.log = left === s.roll ? `${this.name(id)} starts at a fork - pick a way!` : `${this.name(id)} reached a fork!`; return this.push(); }
     this.stepTo(id, nx[0], left);
   }
   stepTo(id, to, left) {
@@ -250,7 +272,7 @@ export class Board {
     const t = B.type(s.pos[id]), me = this.name(id);
     if (s.hot?.includes(s.pos[id])) { const n = this.addCoins(id, -(B.hazard?.dmg || 6)); s.log = `🔥 ${me} landed on scorching lava! ${n} 🪙`; return this.nextTurn(); }
     if (t === 'green') s.log = this.event(id);
-    else if (t === 'duel') s.log = this.duel(id);
+    else if (t === 'duel') { if (this.askTarget(id, 'duel')) return; s.log = `${me} found no one to duel.`; }
     else if (t === 'shop') s.log = `${me} entered the shop`;
     else if (t === 'slot') s.log = `${me} sits down at the slot machine`;
     else if (t === 'toll') s.log = `${me} is crossing the bridge`;
@@ -265,8 +287,8 @@ export class Board {
     else if (t === 'jackpot') s.log = this.jackpot(id);
     else if (t === 'metro') s.log = this.metro(id);
     else if (t === 'vent') s.log = this.vent(id);
-    else if (t === 'thief') s.log = this.thief(id);
-    else if (t === 'swap') s.log = this.swapPlaces(id);
+    else if (t === 'thief') { if (this.askTarget(id, 'thief')) return; s.log = this.thief(id); }
+    else if (t === 'swap') { if (this.askTarget(id, 'swap')) return; s.log = this.swapPlaces(id); }
     else if (t === 'warp') { const o = B.warps.find(k => k !== s.pos[id]); s.pos[id] = o; s.log = `${me} was warped across the island!`; }
     else { const d = Math.max(t === 'blue' ? 3 : -3, -s.coins[id]); s.coins[id] += d; s.log = `${me} landed on ${t}: ${d >= 0 ? '+' : ''}${d} 🪙`; }
     if (t === 'shop') { s.stock = Object.keys(ITEMS).sort(() => Math.random() - .5).slice(0, 3); s.phase = 'shop'; return this.push(); }
@@ -309,13 +331,13 @@ export class Board {
     for (const v of s.order) { if (v === id) continue; if (this.guard(v)) { hit.push(`${this.name(v)} 🛡️`); continue; } const n = Math.min(2, s.coins[v]); s.coins[v] -= n; got += n; hit.push(this.name(v)); }
     s.coins[id] += got; const h = this.heat(); return `🌋 ${me} set off an eruption vent! ${h}Ash rains on ${hit.join(', ') || 'nobody'}: +${got} 🪙 for ${me}.`;
   }
-  thief(id) {            // 🦹 steal up to 5 coins from a random rival (a shield blocks it)
-    const me = this.name(id), v = this.rival(id); if (!v) return `${me} found a thief's den, but nobody to rob.`;
+  thief(id, v0) {            // 🦹 steal up to 5 coins from a random rival (a shield blocks it)
+    const me = this.name(id), v = v0 ?? this.rival(id); if (!v) return `${me} found a thief's den, but nobody to rob.`;
     if (this.guard(v)) return `${me} tried to rob ${this.name(v)}, but 🛡️ blocked it!`;
     const n = Math.min(5, this.s.coins[v]); this.s.coins[v] -= n; this.s.coins[id] += n; return `🦹 ${me} robbed ${this.name(v)}! +${n} 🪙`;
   }
-  swapPlaces(id) {       // 🔄 trade places with a random rival (a shield blocks it)
-    const s = this.s, me = this.name(id), v = this.rival(id); if (!v) return `${me} stepped on a swap pad, but nobody to swap with.`;
+  swapPlaces(id, v0) {       // 🔄 trade places with a random rival (a shield blocks it)
+    const s = this.s, me = this.name(id), v = v0 ?? this.rival(id); if (!v) return `${me} stepped on a swap pad, but nobody to swap with.`;
     if (this.guard(v)) return `${me} tried to swap with ${this.name(v)}, but 🛡️ blocked it!`;
     [s.pos[id], s.pos[v]] = [s.pos[v], s.pos[id]]; return `🔄 ${me} swapped places with ${this.name(v)}!`;
   }
@@ -335,13 +357,34 @@ export class Board {
     ];
     return evs[rand(evs.length)]();
   }
-  duel(id) {
-    const s = this.s, me = this.name(id), rivals = s.order.filter(k => k !== id), v = rivals[rand(rivals.length)];
-    if (v === undefined) return `${me} found no one to duel.`;
-    let a, b, tries = 0; do { a = 1 + rand(6); b = 1 + rand(6); } while (a === b && ++tries < 5);
-    if (a === b) return `${me} and ${this.name(v)} tied a duel!`;
-    const [w, l] = a > b ? [id, v] : [v, id], n = Math.min(5, s.coins[l]); s.coins[l] -= n; s.coins[w] += n;
-    return `⚔️ ${me} (${a}) vs ${this.name(v)} (${b}): ${this.name(w)} wins ${n} 🪙`;
+  finishRoll(id) {
+    const s = this.s; if (!this.active || s.phase !== 'rolling' || s.order[s.turn] !== id) return;
+    const left = s.roll; s.phase = 'moving'; s.log = `${this.name(id)} rolled ${left}!${s.why || ''}`; this.push(); this.later(() => this.walk(id, left), 500);
+  }
+  skipRoll() { const s = this.s; if (s.phase !== 'rolling') return; s.skip = (s.skip || 0) + 1; this.finishRoll(s.order[s.turn]); }     // host button: no waiting for the dice
+  askTarget(id, k, ret = 'next') {      // thief / swap / duel: the player picks the rival (bots pick on their own, the host can skip an AFK)
+    const s = this.s, opts = s.order.filter(v => v !== id); if (!opts.length) return false;
+    s.phase = 'target'; s.pick = { k, opts, ret };
+    s.log = `${this.name(id)} ${k === 'duel' ? 'is challenging someone to a duel' : k === 'thief' ? 'is about to rob someone' : 'is about to swap places with someone'} - pick who!`;
+    this.push(); return true;
+  }
+  resolveTarget(id, v) {
+    const s = this.s, { k, ret } = s.pick; s.pick = null;
+    if (k === 'duel') return this.startDuel(id, v);
+    s.log = k === 'thief' ? this.thief(id, v) : this.swapPlaces(id, v);
+    if (ret === 'roll') { s.phase = 'roll'; return this.push(); }
+    s.phase = 'resolve'; this.push(); this.later(() => { if (this.active && s.phase === 'resolve') this.nextTurn(); }, 1900);
+  }
+  startDuel(id, v) {      // both players roll a die in front of everyone: "rolling...", then the result, then the coins move
+    const s = this.s, me = this.name(id), vn = this.name(v); let a, b, tries = 0; do { a = 1 + rand(6); b = 1 + rand(6); } while (a === b && ++tries < 5);
+    s.phase = 'duelshow'; s.duel = { a: id, b: v, ra: null, rb: null, w: null, n: 0 }; s.log = `⚔️ ${me} vs ${vn}!`; this.push();
+    this.later(() => {
+      if (!this.active || s.phase !== 'duelshow') return;
+      const d = s.duel; d.ra = a; d.rb = b;
+      if (a === b) s.log = `⚔️ ${me} (${a}) vs ${vn} (${b}): it's a tie!`;
+      else { const [w, l] = a > b ? [id, v] : [v, id], n = Math.min(5, s.coins[l]); s.coins[l] -= n; s.coins[w] += n; d.w = w; d.n = n; s.log = `⚔️ ${me} (${a}) vs ${vn} (${b}): ${this.name(w)} wins ${n} 🪙`; }
+      this.push(); this.later(() => { if (this.active && s.phase === 'duelshow') this.nextTurn(); }, 3200);
+    }, 1900);
   }
   nextTurn() {
     const s = this.s; if (++s.turn >= s.order.length) return this.endRound();
@@ -356,24 +399,17 @@ export class Board {
       const reel = mult === 5 ? '7️⃣7️⃣7️⃣' : mult === 2 ? p[0].repeat(3) : mult === 1 ? p[0] + p[0] + p[1] : p[0] + p[1] + p[2];
       s.coins[id] += b * mult; s.log = `🎰 ${this.name(id)} bet ${b} 🪙 ${reel} → ${mult > 0 ? '+' : ''}${b * mult} 🪙${mult === 5 ? ' JACKPOT!' : ''}`; return this.nextTurn();
     }
+    if (d.a === 'target' && s.phase === 'target' && s.pick?.opts.includes(d.k)) return this.resolveTarget(id, d.k);
     if (d.a === 'go' && s.phase === 'choose' && s.opts.includes(+d.k)) { const left = s.left; s.phase = 'moving'; s.opts = null; return this.stepTo(id, +d.k, left); }
     if (d.a === 'buy' && s.phase === 'shop' && t && s.stock?.includes(d.k) && s.coins[id] >= t.c && inv.length < MAXI) {
       s.coins[id] -= t.c; inv.push(d.k); s.log = `${this.name(id)} bought ${t.n}`; return this.push();
     }
     if (d.a === 'use' && s.phase === 'roll' && inv.includes(d.k) && !t.p) {
       inv.splice(inv.indexOf(d.k), 1); const me = this.name(id), rivals = s.order.filter(k => k !== id);
-      if (d.k === 'steal') {
-        const v = rivals.filter(k => s.coins[k] > 0).sort((a, b) => s.coins[b] - s.coins[a])[0];
-        if (!v) s.log = 'Nobody had coins to steal!';
-        else if (this.guard(v)) s.log = `${me}'s theft was blocked by ${this.name(v)}'s 🛡️!`;
-        else { const n = Math.min(5, s.coins[v]); s.coins[v] -= n; s.coins[id] += n; s.log = `${me} stole ${n} 🪙 from ${this.name(v)}!`; }
-      } else if (d.k === 'magnet') { s.star = this.ahead(s.pos[id], 5 + rand(4)); s.log = `${me} pulled the ⭐ closer!`; }
-      else if (d.k === 'swap') {
-        const v = rivals[rand(rivals.length)];
-        if (v === undefined) s.log = 'Nobody to swap with!';
-        else if (this.guard(v)) s.log = `${me}'s swap was blocked by ${this.name(v)}'s 🛡️!`;
-        else { [s.pos[id], s.pos[v]] = [s.pos[v], s.pos[id]]; s.log = `${me} swapped places with ${this.name(v)}!`; }
-      } else { s.next[id] = d.k; s.log = `${me} used ${t.n}`; }
+      if (d.k === 'steal') { if (this.askTarget(id, 'thief', 'roll')) return; s.log = 'Nobody to steal from!'; }
+      else if (d.k === 'magnet') { s.star = this.ahead(s.pos[id], 5 + rand(4)); s.log = `${me} pulled the ⭐ closer!`; }
+      else if (d.k === 'swap') { if (this.askTarget(id, 'swap', 'roll')) return; s.log = 'Nobody to swap with!'; }
+      else { s.next[id] = d.k; s.log = `${me} used ${t.n}`; }
       this.push();
     }
   }
@@ -395,7 +431,8 @@ export class Board {
     const s = this.s, i = s.order.indexOf(id); if (i < 0) return;
     const wasCur = i === s.turn; s.order.splice(i, 1); if (i < s.turn) s.turn--;
     if (!s.order.length) return this.quit();
-    if (s.phase === 'roll' || s.phase === 'shop' || s.phase === 'choose' || s.phase === 'slot') { if (s.turn >= s.order.length) return this.endRound(); if (wasCur) s.phase = 'roll'; }
+    if (s.pick) { s.pick.opts = s.pick.opts.filter(x => x !== id); if (!s.pick.opts.length) { s.pick = null; s.phase = 'roll'; } }
+    if (s.phase === 'roll' || s.phase === 'shop' || s.phase === 'choose' || s.phase === 'slot' || s.phase === 'target') { if (s.turn >= s.order.length) return this.endRound(); if (wasCur) s.phase = 'roll'; }
     this.push();
   }
   // adj = { id: { m: reward multiplier, pen: coins lost when finishing in the bottom half } } (optional, e.g. Math Race difficulty)

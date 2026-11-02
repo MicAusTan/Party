@@ -14,7 +14,7 @@
 <div id="menu" class="box">
   <h1>Party Game</h1>
   <input id="name" placeholder="Your name" maxlength="12">
-  <button id="shopBtn" class="ghost">Customize <span class="gemchip"></span></button>
+  <button id="shopBtn" class="pal" title="Customize your character"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 3a9 9 0 0 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.8-.4-1.1-.2-.3-.4-.6-.4-1 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4c0-4.4-4-8.6-9-8.6zM6.5 12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg></button>
   <button id="host">Host game</button>
   <div class="row"><input id="code" placeholder="Room code" maxlength="5"><button id="join">Join</button></div>
   <button id="solo" class="ghost">🧪 Practice (solo, offline)</button>
@@ -23,7 +23,7 @@
   <div class="top"><span>Room: <b id="room" title="Click to copy"></b></span><button id="fold" class="ghost" title="Collapse / expand">–</button></div>
   <div id="body">
     <div id="players"></div>
-    <button id="shopBtn2" class="ghost">Customize <span class="gemchip"></span></button>
+    <button id="shopBtn2" class="pal" title="Customize your character"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 3a9 9 0 0 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.8-.4-1.1-.2-.3-.4-.6-.4-1 0-.9.7-1.6 1.6-1.6H17a4 4 0 0 0 4-4c0-4.4-4-8.6-9-8.6zM6.5 12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg></button>
     <small id="pushHint">🖐 Left-click or press F to shove people (mind the edge!)</small>
     <button id="leaveBtn" class="ghost">🚪 Leave game</button>
     <div id="waitMsg"><small>Waiting for the host to start…</small></div>
@@ -60,6 +60,7 @@
     <label id="repeatRow"><input type="checkbox" id="repeats"> Allow the same minigame more than once</label>
     <small>Party mode: random minigames back to back, points add up, highest total wins.</small>
   </div>
+  <label><input type="checkbox" id="petsOn"> Pets follow players in minigames (turn off if a machine lags)</label>
   <label><input type="checkbox" id="team"> Team minigames (Tug of War, Relay Race, Flag Rush)</label>
   <div class="srow">Fill empty seats with bots up to <select id="fill"><option value="0">Off</option><option value="3">3 players</option><option value="4">4 players</option><option value="6">6 players</option><option value="8">8 players</option></select></div>
   <div class="srow">Bot skill <select id="botSkill"><option value="mixed">Mixed (every bot different)</option><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>

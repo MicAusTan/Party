@@ -38,7 +38,7 @@ export default {
       }
       A.move(dt);
       for (const id of ids) { const s = st[id]; s.x = Math.max(-12, Math.min(12, s.x)); s.z = Math.min(10, s.z); }
-      if (phaseT <= 0) { red = !red; const H = ctx.diff === 1; if (red) { phaseT = H ? 1 + Math.random() * 1.3 : 1.4 + Math.random() * 1.6; grace = H ? .2 : .4; redAt = time; } else phaseT = H ? (Math.random() < .25 ? .35 + Math.random() * .4 : .9 + Math.random() * 1.9) : 1.8 + Math.random() * 2.5; }
+      if (phaseT <= 0) { red = !red; const H = ctx.diff === 1; if (red) { phaseT = H ? 1 + Math.random() * 1.3 : 1.4 + Math.random() * 1.6; grace = H ? .6 : 1.1; redAt = time; } else phaseT = H ? (Math.random() < .25 ? .35 + Math.random() * .4 : .9 + Math.random() * 1.9) : 1.8 + Math.random() * 2.5; }
       if (red) grace -= dt;
       for (const id of ids) {
         const s = st[id]; if (fin.includes(id)) { s.ix = s.iz = 0; s.sp = 0; continue; }
