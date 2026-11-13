@@ -11,7 +11,7 @@ export default {
   create(ctx) {
     const G = [4, 5, 6][ctx.diff ?? 0], TOT = G * G, K = 4 / G, SP = 1.95 * K;                // grid size
     const sb = scoreboard(ctx, { timeout: [70, 110, 160][ctx.diff ?? 0], bot: s => { const T = jit(mix(42, 17, s), .15) * TOT / 16; return { v: Math.round(T * 1000), t: T }; } }), nums = Array.from({ length: TOT }, (_, i) => i + 1);
-    for (let i = 15; i > 0; i--) { const j = ctx.rng() * (i + 1) | 0; [nums[i], nums[j]] = [nums[j], nums[i]]; }
+    for (let i = nums.length - 1; i > 0; i--) { const j = ctx.rng() * (i + 1) | 0; [nums[i], nums[j]] = [nums[j], nums[i]]; }
     let next = 1, pen = 0, time = 0, done = false, lastT = '', shownNext = 0;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, st = {}, dirty = {}; ids.forEach(id => { st[id] = { nx: 1, pen: 0 }; dirty[id] = true; });
     const el = document.createElement('div'); el.className = 'mg'; el.innerHTML = '<h3 id="t"></h3>'; ctx.hud.append(el); const tl = el.querySelector('#t');

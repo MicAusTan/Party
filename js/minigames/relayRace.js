@@ -10,7 +10,7 @@ const LAP0 = 30, X0 = -16, X1 = 16, LZ = [-1.6, 1.6];       // presses per lap, 
 const trackX = f => X0 + (X1 - X0) * f;
 export default {
   team: true,
-  tiers: [{ n: 'Short', m: .8, pen: 0, d: '20 presses per lap.' }, { n: 'Normal', m: 1, pen: 0, d: '30 presses per lap.', def: true }, { n: 'Long', m: 1.4, pen: 0, d: '45 presses per lap.' }],
+  tiers: [{ n: 'Short', m: .8, pen: 0, d: '20 presses per lap.' }, { n: 'Normal', m: 1, pen: 0, d: '30 presses per lap.', def: true }, { n: 'Long', m: 1.5, pen: 0, d: '45 presses per lap.' }],
   name: 'Relay Race', desc: `TEAM GAME! Only your team's current runner mashes SPACE (or click). ${LAP0} presses per lap (more or fewer by track length), then your teammate runs. First team done wins.`,
   create(ctx) {
     const LAP = [20, 30, 45][ctx.diff ?? 1];                         // track length (presses per lap)

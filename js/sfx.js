@@ -30,6 +30,12 @@ const S = {
   hit: () => tone(160, .12, 'sawtooth', .08, 0, .5),
   fall: () => tone(500, .5, 'sine', .07, 0, .15),
   dash: () => tone(200, .15, 'sawtooth', .06, 0, 3),
+  pop: () => { tone(900, .07, 'triangle', .1, 0, .3); tone(1400, .04, 'square', .03, 0, .5); },
+  ding: () => { tone(1047, .35, 'sine', .1); tone(1568, .5, 'sine', .07, .08); },
+  correct: () => { tone(784, .08, 'triangle', .1); tone(1175, .14, 'triangle', .1, .07); },
+  jump: () => tone(320, .16, 'square', .05, 0, 2.2),
+  whoosh: () => tone(500, .22, 'sawtooth', .03, 0, .2),
+  tickhi: () => tone(880, .1, 'square', .08),
   erupt: () => { tone(90, .7, 'sawtooth', .1, 0, .5); tone(140, .5, 'square', .05, .1, .4); },
 };
 export const sfx = n => S[n]?.();

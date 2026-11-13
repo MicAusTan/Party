@@ -3,9 +3,10 @@ import { sfx } from '../sfx.js';
 import { arena } from './arena.js';
 import { topDown } from './kit.js';
 // Set: a desert canyon plateau at dusk. The red circles are real shadows: each boulder visibly falls from the sky and lands (dust + shake).
+import { linger } from './util.js';
 export default {
-  tiers: [{ n: 'Normal', m: 1, pen: 0 }, { n: 'Heavy Start', m: 1.3, pen: 1, d: 'Boulders fall much faster from the start.' }, { n: 'Hunted', m: 1.7, pen: 2, d: 'Boulders mostly drop right where players stand (a little off).' }],
-  name: 'Dodge Rain', desc: 'Red circles mark where boulders land. Stay out of them! Last one standing wins. WASD to move. Hold E near someone to grab and slow them (but they drag YOU along).',
+  tiers: [{ n: 'Normal', m: 1, pen: 0 }, { n: 'Heavy Start', m: 1.5, pen: 1, d: 'Boulders fall much faster from the start.' }, { n: 'Hunted', m: 2, pen: 2, d: 'Boulders mostly drop right where players stand (a little off).' }],
+  name: 'Dodge Rain', desc: 'Red circles mark where boulders land. Stay out of them! Last one standing wins. WASD to move. Hold E, Space or click near someone to grab and slow them (but they drag YOU along).',
   create(ctx) {
     const W = ctx.world, A = arena(ctx, { grab: true, set: { ...topDown(W, 13.5, 21), sky: 0xf0a868, fog: { color: 0xf0a868, near: 50, far: 120 }, light: 1.05, sun: { color: 0xffc080, intensity: 1.25, pos: [-8, 14, 6] } } }), { ids, st, S } = A, host = ctx.isHost, rings = [], was = {}, boul = [], bGeo = new THREE.IcosahedronGeometry(1.1, 1); let prevKeys = new Set();
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
@@ -15,6 +16,7 @@ export default {
     let hz = [], out = [], time = 0, spawnT = 1, acc = 0, over = false;
     const pack = () => ({ p: A.pack(), h: hz.map(h => [+h.x.toFixed(2), +h.z.toFixed(2), +h.t.toFixed(2), h.r]) });
     let snap = pack();
+    const lin = linger(2.2);
     function step(dt) {
       time += dt;
       A.bots(dt, (id, s, sk) => { let fx = 0, fz = 0, hit = false; const m = 1.2 + 2.4 * sk; for (const h of hz) { const dx = s.x - h.x, dz = s.z - h.z, d = Math.hypot(dx, dz); if (d < h.r + m) { hit = true; const w = (h.r + m - d) / (h.r + m); fx += dx / (d || 1) * w; fz += dz / (d || 1) * w; } } if (hit) { const r = Math.hypot(s.x, s.z); if (r > 9.5) { fx -= s.x / r * .8; fz -= s.z / r * .8; } return [fx, fz]; } return Math.hypot(s.x, s.z) > 8 ? [-s.x, -s.z] : null; });
@@ -30,7 +32,7 @@ export default {
         return false;
       });
       const al = ids.filter(id => st[id].alive);
-      if (al.length <= (ids.length > 1 ? 1 : 0) || time > 60) { over = true; ctx.send(pack()); ctx.finish([...al, ...out.reverse()]); }
+      { const o = lin(al.length <= (ids.length > 1 ? 1 : 0) || time > 60, dt, () => [...al, ...out.slice().reverse()]); if (o) { over = true; ctx.send(pack()); ctx.finish(o); } }
     }
     return {
       update(dt) {

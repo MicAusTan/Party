@@ -13,6 +13,7 @@ function build(k) {
   if (k === 'note') { [[-.2, -.02], [-.12, -.13], [.02, -.16], [.14, -.1], [.2, 0], [.2, .8], [.14, .8], [.14, .1], [.04, .13], [-.1, .09]].forEach(([x, y], i) => i ? sh.lineTo(x, y) : sh.moveTo(x, y)); sh.closePath(); return ex(sh, .05, .45); }
   if (k === 'flake') { for (let i = 0; i < 12; i++) { const r = i % 2 ? .16 : 1, a = i * Math.PI / 6; if (i) sh.lineTo(Math.cos(a) * r, Math.sin(a) * r); else sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); } sh.closePath(); return ex(sh, .04, .3); }
   if (k === 'paw') { const pos = [], idx = []; let off = 0; for (const [x, y, rx, ry] of [[0, -.08, .24, .2], [-.2, .2, .1, .1], [-.07, .3, .09, .09], [.07, .3, .09, .09], [.2, .2, .1, .1]]) { const cg = new THREE.CircleGeometry(1, 12), a = cg.attributes.position; for (let i = 0; i < a.count; i++) pos.push(x + a.getX(i) * rx, y + a.getY(i) * ry, 0); for (const j of cg.index.array) idx.push(j + off); off += a.count; } const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); g.scale(1.2, 1.2, 1); return g; }
+  if (k === 'zee') { [[-.4, .5], [.4, .5], [.4, .35], [-.1, -.35], [.4, -.35], [.4, -.5], [-.4, -.5], [-.4, -.35], [.1, .35], [-.4, .35]].forEach(([x, y], i) => i ? sh.lineTo(x, y) : sh.moveTo(x, y)); sh.closePath(); return ex(sh, .05, .4); }
   if (k === 'ring') return new THREE.RingGeometry(.35, .5, 20);
   if (k === 'quad') return new THREE.PlaneGeometry(.5, .5);
   return new THREE.CircleGeometry(.5, 14);      // 'disc'

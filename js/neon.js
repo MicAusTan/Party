@@ -16,7 +16,7 @@ export const sp = ringXY.map(([x, z], i) => ({ x, z, y: 0, type: RT[i], next: [(
 const BEND = 22, SKY_H = 8.5, skyY = u => SKY_H * sstep(0, .3, u) * (1 - sstep(.7, 1, u));
 const sDense = catmull([ringXY[0], [0, 21], [0, 8], [0, -8], [0, -21], ringXY[BEND]], false, 20).map(([x, z], i, a) => [x, z, skyY(i / (a.length - 1))]);
 const ST = ['green', 'roulette', 'red', 'slot', 'jackpot', 'green', 'roulette', 'red', 'slot', 'green', 'red', 'blue'];
-resample(sDense.map(p => [p[0], p[1]]), 12, false).forEach(([x, z], k) => sp.push({ x, z, y: +skyY((k + 1) / 13).toFixed(2), type: ST[k], bridge: true, next: [k < 11 ? N + k + 1 : BEND] }));
+resample(sDense.map(p => [p[0], p[1]]), 12, false).forEach(([x, z], k) => sp.push({ x, z, y: +sDense.reduce((best, p) => { const d = (p[0] - x) ** 2 + (p[1] - z) ** 2; return d < best[0] ? [d, p[2]] : best; }, [1e9, 0])[1].toFixed(2), type: ST[k], bridge: true, next: [k < 11 ? N + k + 1 : BEND] }));
 // Back alley: tucked inside the ring
 const inward = ([x, z], k) => { const l = Math.hypot(x, z); return [x - x / l * k, z - z / l * k]; };
 const AEND = 41, aDense = catmull([ringXY[33], inward(ringXY[35], 8), inward(ringXY[38], 8), ringXY[AEND]], false, 20), AT = ['thief', 'red', 'swap', 'green'], A0 = N + 12;
@@ -47,7 +47,7 @@ function neonDecor(W, add, anim) {
   const edges = (pts, half, mat, y = .06) => { for (const s of [-1, 1]) { const off = pts.map((p, i) => { const q = pts[Math.min(pts.length - 1, i + 1)], o = pts[Math.max(0, i - 1)], dx = q[0] - o[0], dz = q[1] - o[1], l = Math.hypot(dx, dz) || 1; return [p[0] - dz / l * half * s, p[1] + dx / l * half * s, p[2] || 0]; }); const m = ribbon(off, .07, 0xffffff, y, true); m.material = mat; } };
   const ringPts = [...ringDense, ringDense[0]].map(([x, z]) => [x, z, 0]);
   ribbon(ringPts, 1.9, 0x2a2f48, .02); edges(ringPts, 1.9, neon(0xff2d95, .0));
-  ribbon(sDense, 1.7, 0x3a3560, .05); edges(sDense, 1.7, neon(0x00e5ff, .5), .09);
+  ribbon(sDense, 1.7, 0x3a3560, -.1); edges(sDense, 1.7, neon(0x00e5ff, .5), -.04);
   const aPts = aDense.map(([x, z]) => [x, z, 0]); ribbon(aPts, 1.4, 0x2a2f48, .02); edges(aPts, 1.4, neon(0xb388ff, .3));
   // skybridge pylons
   const pyl = inst(new THREE.CylinderGeometry(.3, .4, 1, 6), M(0x3b3f5c), 40);

@@ -10,8 +10,10 @@ export default {
   name: 'Red Light, Green Light', desc: 'Run the long course to the white line! On RED you must stand still - moving sends you back to the start. First across wins. WASD to move.',
   create(ctx) {
     const CD = 4, FIN = -118, CZ = (10 + FIN) / 2 - 2, LL = 10 - FIN + 14, ZD = FIN - 4.3;           // long course: start z = 8.5, finish line z = FIN
-    const W = ctx.world, A = arena(ctx, { shove: true, radius: 90, set: { ...topDown(W, 13.5, 22, [0, 0, -1]), sky: 0x87ceeb, light: 1.15, sun: { intensity: 1.2, pos: [6, 16, 8] } } }), { ids, st, S } = A, host = ctx.isHost;
+    const W = ctx.world, A = arena(ctx, { shove: true, radius: 170, set: { ...topDown(W, 13.5, 22, [0, 0, -1]), sky: 0x87ceeb, light: 1.15, sun: { intensity: 1.2, pos: [6, 16, 8] } } }), { ids, st, S } = A, host = ctx.isHost;
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
+    const sig = document.createElement('div'); sig.style.cssText = 'position:fixed;left:50%;top:14px;transform:translateX(-50%);z-index:9999;pointer-events:none;font:bold 22px sans-serif;color:#fff;padding:8px 22px;border-radius:12px;border:3px solid #fff;text-shadow:0 2px 4px #000a'; (document.body ?? ctx.hud).append(sig);
+    const rim = document.createElement('div'); rim.style.cssText = 'position:fixed;inset:0;z-index:9998;pointer-events:none;transition:box-shadow .15s'; (document.body ?? ctx.hud).append(rim);
     const line = new THREE.Mesh(new THREE.BoxGeometry(14, .05, .4), new THREE.MeshBasicMaterial({ color: 0xffffff })); line.position.set(0, .05, FIN); S.root.add(line);
     S.box(70, .5, LL + 24, 0x6fbf4a, 0, -.5, CZ); S.box(24, .04, LL - 4, 0x86d05a, 0, 0, CZ); S.box(24, .05, .3, 0xffffff, 0, .02, 9.8);
     for (let k = -2; k <= 2; k++) for (let j = 0; j < 52; j++) S.box(.1, .03, 1.4, 0xffffff, k * 4.4, .03, 6.5 - j * 2.4);                                                                  // lane dashes
@@ -60,10 +62,11 @@ export default {
         W.scene.background.set(snap.r ? 0xd96b6b : 0x87ceeb);
         headG.rotation.y += ((snap.r ? 0 : Math.PI) - headG.rotation.y) * Math.min(1, dt * 9); eyes.forEach(e => e.material.color.setHex(snap.r ? 0xff2020 : 0x330000)); bulb.material.color.setHex(snap.r ? 0xff3b30 : 0x2ecc71);
         lamps.forEach(([r, g]) => { r.material.color.setHex(snap.r ? 0xff3b30 : 0x3a0f0f); g.material.color.setHex(snap.r ? 0x0f3a1a : 0x2ecc71); });
+        sig.style.display = snap.c > 0 ? 'none' : 'block'; sig.style.background = snap.r ? '#e74c3c' : '#2ecc71'; sig.textContent = snap.r ? '🛑 RED - FREEZE' : '🟢 GREEN - RUN'; rim.style.boxShadow = snap.c > 0 ? 'none' : `inset 0 0 0 10px ${snap.r ? '#e74c3c' : '#2ecc71'}`;
         el.innerHTML = snap.c > 0 ? `<h2>Get ready... ${snap.c}</h2><div>Stand still until GO!</div>` : `<h2 style="background:${snap.r ? '#e74c3c' : '#2ecc71'};border-radius:10px;padding:6px 20px">${snap.r ? '🛑 RED - FREEZE' : '🟢 GREEN - RUN'}</h2><div>Finished: ${snap.f.length}/${ids.length}</div>`;
       },
       onMessage(m, from) { if (A.onInput(m, from)) return; if (!host && m.p) snap = m; },
-      cleanup() { A.cleanup(); el.remove(); },
+      cleanup() { A.cleanup(); el.remove(); sig.remove(); rim.remove(); },
     };
   },
 };

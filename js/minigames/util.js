@@ -71,3 +71,6 @@ export const TEAM_ICON = ['🔴', '🔵', '🟢', '🟡'], TEAM_NAME = ['Red', '
 export const rnd = (a, b) => a + Math.random() * (b - a);
 export const jit = (x, f = .15) => x * (1 + (Math.random() * 2 - 1) * f);
 export const mix = (worst, best, s) => worst + (best - worst) * s;
+
+// Elimination games: keep playing a moment after the decisive fall so everyone sees it. Returns the final order once cond has held for secs (the order is frozen when cond first held).
+export function linger(secs = 2.2) { let t = null, order = null; return (cond, dt, mk) => { if (t === null) { if (!cond) return null; t = secs; order = mk(); } return (t -= dt) <= 0 ? order : null; }; }

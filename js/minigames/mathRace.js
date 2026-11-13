@@ -4,7 +4,8 @@ import { stage, fitDist } from './stage.js';
 // Set: a mountain staircase. Every correct answer climbs one step toward the golden summit; a wrong answer makes you stumble.
 const GOAL = 8, SX = 2.5, SY = 1.1;
 export default {
-  emotes: false, name: 'Math Race', desc: `Pick a difficulty (Easy / Normal / Hard / Insane), then solve ${GOAL} sums before anyone else! Harder = bigger coin rewards, but finishing in the bottom half costs coins.`,
+  tiers: [{ n: 'Easy', m: .7, pen: 0, d: 'Small sums.' }, { n: 'Normal', m: 1, pen: 1, def: true, d: 'Mixed + - ×.' }, { n: 'Hard', m: 1.5, pen: 3, d: 'Bigger numbers, division.' }, { n: 'Insane', m: 2, pen: 5, d: 'Squares, order of operations.' }],
+  emotes: false, name: 'Math Race', desc: `Everyone votes on a difficulty (Easy / Normal / Hard / Insane) before the game starts. Then solve ${GOAL} sums before anyone else! Harder = bigger coin rewards, but finishing in the bottom half costs coins.`,
   create(ctx) {
     const ids = Object.keys(ctx.players), host = ctx.isHost, r = ctx.rng;
     const gen = lv => Array.from({ length: GOAL + 4 }, () => {
@@ -19,19 +20,20 @@ export default {
       if (k === 3) { const x = ri(4, 13), y = ri(4, 15); return { t: `${x * y} ÷ ${x}`, a: y }; }
       const x = ri(20, 90), y = ri(30, 99); return { t: `${x} - ${y}`, a: x - y };
     });
-    const QS = [0, 1, 2, 3].map(gen), LV = ['Easy', 'Normal', 'Hard', 'Insane'], ADJ = [{ m: .7, pen: 0 }, { m: 1, pen: 1 }, { m: 1.5, pen: 3 }, { m: 2.2, pen: 5 }], lvOf = {}; let qs = QS[1], lv = 1, picked = false, pick = 7;
-    const bot = {}, botLv = id => { const k = ctx.skill?.(id) ?? .5, x = k + (Math.random() - .5) * .5; return x > .85 ? 3 : x > .6 ? 2 : x > .3 ? 1 : 0; }, nextQ = id => { const s = ctx.skill?.(id) ?? .5; return (7 - 4.4 * s) * (.75 + Math.random() * .5) * (1 + .35 * ((lvOf[id] ?? 1) - 1)); };
+    const QS = [0, 1, 2, 3].map(gen), LV = ['Easy', 'Normal', 'Hard', 'Insane'], ADJ = [{ m: .7, pen: 0 }, { m: 1, pen: 1 }, { m: 1.5, pen: 3 }, { m: 2, pen: 5 }], votes = {}; let lv = Math.max(0, Math.min(3, ctx.diff ?? 1)), qs = QS[lv], picked = true, pick = 0, decided = true;
+    const bot = {}, botLv = id => { const k = ctx.skill?.(id) ?? .5, x = k + (Math.random() - .5) * .5; return x > .85 ? 3 : x > .6 ? 2 : x > .3 ? 1 : 0; }, nextQ = id => { const s = ctx.skill?.(id) ?? .5; return (7 - 4.4 * s) * (.75 + Math.random() * .5) * (1 + .35 * (lv - 1)); };
     const prog = {}, reach = {}, disp = {}, seen = {}; ids.forEach(id => { prog[id] = 0; disp[id] = 0; seen[id] = 0; });
     let n = 0, lock = 0, time = 0, acc = 0, over = false, fin = false;
     const W = ctx.world, cnt = ids.length, me = ctx.me;
-    const el = document.createElement('div'); el.className = 'mg';
+    const el = document.createElement('div'); el.className = 'mg'; el.style.cssText = 'position:static;transform:none;max-height:none;overflow:visible;max-width:100%;min-width:min(300px,100%);text-align:center';
     el.innerHTML = '<h2 id="q"></h2><input id="a" inputmode="numeric" autocomplete="off" style="width:120px;text-align:center;font-size:22px"><div id="bars"></div><div id="lv"></div>';
-    ctx.hud.append(el); const q = el.querySelector('#q'), inp = el.querySelector('#a'), bars = el.querySelector('#bars');
+    ctx.hud.append(el); const q = el.querySelector('#q'), inp = el.querySelector('#a'), bars = el.querySelector('#bars'); q.style.cssText += ';font-size:30px;margin:2px 0'; inp.style.cssText += ';font-size:22px;text-align:center;width:150px;transition:background .15s'; inp.placeholder = 'answer + Enter'; let flashT = 0;
     const lvEl = el.querySelector('#lv'); lvEl.style.pointerEvents = 'auto';
-    const choose = k => { if (picked) return; picked = true; lv = k; qs = QS[k]; lvOf[me] = k; if (!host) ctx.send({ lv: k }); lvEl.innerHTML = ''; inp.focus(); };
-    lvEl.innerHTML = '<div style="margin:6px 0">Choose your difficulty:</div>' + LV.map((nme, k) => `<button data-k="${k}" style="margin:2px;font-size:16px">${nme}<br><small>x${ADJ[k].m} coins${ADJ[k].pen ? ', -' + ADJ[k].pen + ' if bottom half' : ''}</small></button>`).join('');
-    lvEl.onclick = e => { const b = e.target.closest('button'); if (b) choose(+b.dataset.k); };
-    lvOf[me] = 1;
+    const setLv = k => { lv = k; qs = QS[k]; };
+    const draw = () => { lvEl.innerHTML = '<div style="margin:6px 0">Vote for the difficulty (most votes wins):</div>' + LV.map((nme, k) => `<button data-k="${k}" style="margin:2px;font-size:16px;${votes[me] === k ? 'outline:3px solid #ffd93d' : ''}">${nme}<br><small>x${ADJ[k].m} coins${ADJ[k].pen ? ', -' + ADJ[k].pen + ' if bottom half' : ''}</small></button>`).join(''); };
+    const choose = k => { if (pick <= 0) return; picked = true; votes[me] = k; if (!host) ctx.send({ lv: k }); draw(); };
+    const decide = () => { if (decided) return; decided = true; ids.forEach(id => { if (ctx.players[id]?.bot) votes[id] = botLv(id); }); const c = [0, 0, 0, 0]; ids.forEach(id => { if (votes[id] != null) c[votes[id]]++; }); let b = 1; if (c.some(x => x)) { b = 0; c.forEach((x, k) => { if (x > c[b]) b = k; }); } setLv(b); };
+        lvEl.onclick = e => { const b = e.target.closest('button'); if (b) choose(+b.dataset.k); };
     setTimeout(() => inp.focus(), 50);
 
     // ---------- the set ----------
@@ -61,19 +63,20 @@ export default {
     const setP = (id, v) => { prog[id] = v; if (v >= GOAL && !(id in reach)) reach[id] = time; };
     inp.onkeydown = e => {
       e.stopPropagation(); if (e.key !== 'Enter' || lock > 0 || over || n >= GOAL || pick > 0) return;
-      if (+inp.value.trim() === qs[n].a && inp.value.trim() !== '') { n++; sfx('click'); host ? setP(ctx.me, n) : ctx.send({ p: n }); }
-      else { lock = .8; sfx('lose'); W.emote(me, 'sad'); W.popIcon(me, '❌'); }
+      if (+inp.value.trim() === qs[n].a && inp.value.trim() !== '') { n++; inp.style.background = '#a8f0b0'; flashT = .3; sfx('correct'); host ? setP(ctx.me, n) : ctx.send({ p: n }); }
+      else { lock = .8; inp.style.background = '#ff9a9a'; flashT = .35; sfx('lose'); W.emote(me, 'sad'); W.popIcon(me, '❌'); }
       inp.value = '';
     };
     const finish = () => {
-      over = true; ctx.send({ pr: prog, end: 1 }); startFin();
+      over = true; ctx.send({ pr: prog, end: 1, lvl: lv }); startFin();
       const order = [...ids].sort((a, b) => prog[b] - prog[a] || (reach[a] ?? 1e9) - (reach[b] ?? 1e9));
-      const adj = {}; ids.forEach(id => adj[id] = ADJ[lvOf[id] ?? 1]);
+      const adj = {}; ids.forEach(id => adj[id] = ADJ[lv]);
       S.after(2.2, () => ctx.finish(order, undefined, adj));            // let everyone see who reached the summit
     };
     return {
       update(dt) {
-        if (pick > 0) { pick -= dt; if (pick <= 0) { if (!picked) choose(1); lvEl.innerHTML = ''; ids.forEach(id => { if (host && ctx.players[id]?.bot) lvOf[id] = botLv(id); }); } q.textContent = `Pick a difficulty (${Math.ceil(pick)}s)`; inp.disabled = true; return; }
+        if (flashT > 0 && (flashT -= dt) <= 0) inp.style.background = '';
+        if (pick > 0) { pick -= dt; if (pick <= 0) { if (host) decide(); lvEl.innerHTML = ''; } q.textContent = `Vote for a difficulty (${Math.ceil(pick)}s)`; inp.disabled = true; return; }
         time += dt; lock -= dt; prog[ctx.me] = Math.max(prog[ctx.me], n);
         q.textContent = n >= GOAL ? 'Done!' : lock > 0 ? '✗ wait...' : qs[n].t + ' = ?' + (lv !== 1 ? ' (' + LV[lv] + ')' : '');
         inp.disabled = n >= GOAL; if (!inp.disabled && lock <= 0 && document.activeElement !== inp) inp.focus();
@@ -82,12 +85,12 @@ export default {
         for (const id of ids) if (ctx.players[id]?.bot && prog[id] < GOAL) {     // bots: a skill-based time per question, the odd wrong answer costs .8s
           const b = bot[id] ??= { t: 0, q: 0 }; if (!b.q) b.q = nextQ(id); if ((b.t += dt) >= b.q) { b.t = 0; b.q = nextQ(id); if (Math.random() < .12 - .08 * (ctx.skill?.(id) ?? .5)) b.q += .8; else setP(id, prog[id] + 1); }
         }
-        if ((acc += dt) > .2) { acc = 0; ctx.send({ pr: prog }); }
+        if ((acc += dt) > .2) { acc = 0; ctx.send({ pr: prog, lvl: lv }); }
         if (ids.some(id => prog[id] >= GOAL) || time > 75) finish();
       },
       onMessage(m, from) {
-        if (host) { if (m.lv != null && from in prog && pick > 0) lvOf[from] = Math.max(0, Math.min(3, m.lv | 0)); if (m.p != null && from in prog) setP(from, Math.min(GOAL, m.p | 0)); }
-        else if (m.pr) { for (const id in m.pr) if (id !== ctx.me) prog[id] = m.pr[id]; if (m.end) startFin(); }
+        if (host) { if (m.lv != null && from in prog && pick > 0) votes[from] = Math.max(0, Math.min(3, m.lv | 0)); if (m.p != null && from in prog) setP(from, Math.min(GOAL, m.p | 0)); }
+        else if (m.pr) { if (m.lvl != null && n === 0) setLv(Math.max(0, Math.min(3, m.lvl | 0))); for (const id in m.pr) if (id !== ctx.me) prog[id] = m.pr[id]; if (m.end) startFin(); }
       },
       cleanup() { el.remove(); S.cleanup(); },
     };

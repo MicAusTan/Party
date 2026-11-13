@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { OPTS } from './look.js';
 import { shapeGeo } from './shapes.js';
-import { PROPS, GAITS, SLOTS } from './props.js';
+import { PROPS, GAITS, SLOTS, HOLDS } from './props.js';
+import { Q } from './quality.js';
 import { PETS, PET_REACT } from './pets.js';
 // Low-poly arena + player meshes (boxes/icospheres, flat shaded, no assets).
-const TR = { sparkle: ['#ffffff', '#ffd93d', '#a5f3fc'], flame: ['#ff9f1a', '#ff3b30', '#ffd93d'], bubbles: ['#bfefff', '#e6fbff', '#8fdcff'], hearts: ['#ff6b9d', '#ff9ecb', '#ff4d6d'], stars: ['#fff176', '#ffd93d', '#ffffff'], smoke: ['#555555', '#777777', '#999999'], toxic: ['#7cf08a', '#b5ff3d', '#2ecc71'], ice: ['#a5f3fc', '#e0faff', '#7fd3ff'], void: ['#b28dff', '#7e57c2', '#2a1a4a'], confetti: ['#ff4d6d', '#ffd93d', '#4dd0e1', '#7cf08a', '#b28dff'], leaves: ['#7cb342', '#ffa726', '#c0392b'], coins: ['#ffd700', '#ffe97a', '#ffb300'], lightning: ['#ffffff', '#7fdcff', '#fff6b0'], ink: ['#111111', '#2b2b3a', '#4a3a6a'], petals: ['#ffb3c6', '#ff8fab', '#ffd6e0'], notes: ['#ff6b9d', '#4dd0e1', '#ffd93d', '#b28dff'], snow: ['#ffffff', '#e3f4ff', '#bfe4ff'], paw: ['#6d4c2f', '#8d6e63', '#a1887f'] };
+const TR = { sparkle: ['#ffffff', '#ffd93d', '#a5f3fc'], flame: ['#ff9f1a', '#ff3b30', '#ffd93d'], bubbles: ['#bfefff', '#e6fbff', '#8fdcff'], hearts: ['#ff6b9d', '#ff9ecb', '#ff4d6d'], stars: ['#fff176', '#ffd93d', '#ffffff'], smoke: ['#555555', '#777777', '#999999'], toxic: ['#7cf08a', '#b5ff3d', '#2ecc71'], ice: ['#a5f3fc', '#e0faff', '#7fd3ff'], void: ['#b28dff', '#7e57c2', '#2a1a4a'], confetti: ['#ff4d6d', '#ffd93d', '#4dd0e1', '#7cf08a', '#b28dff'], leaves: ['#7cb342', '#ffa726', '#c0392b'], coins: ['#ffd700', '#ffe97a', '#ffb300'], lightning: ['#ffffff', '#7fdcff', '#fff6b0'], ink: ['#111111', '#2b2b3a', '#4a3a6a'], petals: ['#ffb3c6', '#ff8fab', '#ffd6e0'], zee: ['#cfe3ff', '#ffffff', '#9fc3ff'], notes: ['#ff6b9d', '#4dd0e1', '#ffd93d', '#b28dff'], snow: ['#ffffff', '#e3f4ff', '#bfe4ff'], paw: ['#6d4c2f', '#8d6e63', '#a1887f'] };
 const COATS = new Map();
 // Patterned body colours (canvas textures, cached). Base colour comes from the player's colour, details from accent.
 function coatTex(kind, color, accent) {
@@ -30,8 +31,15 @@ function coatTex(kind, color, accent) {
   else if (kind === 'lava') { c.fillStyle = '#2a0d0d'; c.fillRect(0, 0, 64, 64); c.strokeStyle = '#ff6a00'; c.lineWidth = 2; for (let i = 0; i < 5; i++) { c.beginPath(); c.moveTo(r() * 64, 0); c.lineTo(r() * 64, 22); c.lineTo(r() * 64, 44); c.lineTo(r() * 64, 64); c.stroke(); } }
   else if (kind === 'argyle') { c.fillStyle = shade(.55); for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) if ((x + y) % 2 === 0) { c.beginPath(); c.moveTo(x * 16 + 8, y * 16); c.lineTo(x * 16 + 16, y * 16 + 8); c.lineTo(x * 16 + 8, y * 16 + 16); c.lineTo(x * 16, y * 16 + 8); c.fill(); } c.strokeStyle = accent; c.lineWidth = 1; for (let i = -4; i < 8; i++) { c.beginPath(); c.moveTo(i * 16, 0); c.lineTo(i * 16 + 64, 64); c.stroke(); } }
   else if (kind === 'tiedye') { for (let i = 0; i < 9; i++) { c.fillStyle = `hsla(${i * 40}, 85%, 60%, .5)`; c.beginPath(); c.arc(32, 32, 34 - i * 3.8, 0, 7); c.fill(); } c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 2; for (let a = 0; a < 6; a++) { c.beginPath(); c.moveTo(32, 32); c.lineTo(32 + Math.cos(a * 1.05) * 40, 32 + Math.sin(a * 1.05) * 40); c.stroke(); } }
+  else if (kind === 'sunset') { const g = c.createLinearGradient(0, 0, 0, 64); g.addColorStop(0, '#2b1055'); g.addColorStop(.5, '#ff4d6d'); g.addColorStop(1, '#ffb347'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); c.fillStyle = '#ffe9a0'; c.beginPath(); c.arc(32, 58, 12, Math.PI, 0); c.fill(); c.fillStyle = 'rgba(255,255,255,.18)'; for (let i = 0; i < 4; i++) c.fillRect((i * 23) % 50, 14 + i * 9, 20, 3); }
+  else if (kind === 'aurora') { c.fillStyle = '#071427'; c.fillRect(0, 0, 64, 64); [['#4dffb0', 18], ['#8a6bff', 30], ['#4dd0e1', 42]].forEach(([col, y0], i) => { c.strokeStyle = col; c.globalAlpha = .55; c.lineWidth = 9; c.beginPath(); for (let x = 0; x <= 64; x += 4) c.lineTo(x, y0 + Math.sin(x / 9 + i * 1.7) * 6); c.stroke(); }); c.globalAlpha = 1; c.fillStyle = '#ffffff'; for (let i = 0; i < 18; i++) c.fillRect((i * 37) % 62, (i * 19) % 24, 1, 1); }
+  else if (kind === 'carbon') { c.fillStyle = '#141414'; c.fillRect(0, 0, 64, 64); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { c.fillStyle = (x + y) % 2 ? '#2a2a2a' : '#1d1d1d'; c.fillRect(x * 8, y * 8, 8, 8); c.strokeStyle = 'rgba(255,255,255,.10)'; c.lineWidth = 1; c.beginPath(); if ((x + y) % 2) { c.moveTo(x * 8, y * 8 + 8); c.lineTo(x * 8 + 8, y * 8); } else { c.moveTo(x * 8, y * 8); c.lineTo(x * 8 + 8, y * 8 + 8); } c.stroke(); } }
+  else if (kind === 'marble') { c.fillStyle = '#f4f4f6'; c.fillRect(0, 0, 64, 64); c.strokeStyle = 'rgba(90,90,110,.5)'; c.lineWidth = 1.5; for (let i = 0; i < 5; i++) { c.beginPath(); c.moveTo(r() * 64, 0); c.quadraticCurveTo(r() * 64, 32, r() * 64, 64); c.stroke(); } c.strokeStyle = 'rgba(150,150,170,.35)'; c.lineWidth = .8; for (let i = 0; i < 6; i++) { c.beginPath(); c.moveTo(r() * 64, 0); c.quadraticCurveTo(r() * 64, 32, r() * 64, 64); c.stroke(); } }
+  else if (kind === 'opal') { c.fillStyle = '#f6f2ff'; c.fillRect(0, 0, 64, 64); [['rgba(255,150,200,.55)', 16, 18], ['rgba(120,220,255,.55)', 46, 22], ['rgba(255,240,140,.55)', 28, 46], ['rgba(170,140,255,.55)', 54, 52]].forEach(([col, x, y]) => { const g = c.createRadialGradient(x, y, 2, x, y, 26); g.addColorStop(0, col); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); }); c.fillStyle = '#ffffff'; for (let i = 0; i < 10; i++) c.fillRect(r() * 62, r() * 62, 2, 2); }
+  else if (kind === 'denim') { c.fillStyle = '#2d4f86'; c.fillRect(0, 0, 64, 64); for (let y = 0; y < 64; y += 2) { c.fillStyle = y % 4 ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.08)'; c.fillRect(0, y, 64, 1); } c.strokeStyle = '#ff9f43'; c.lineWidth = 1; c.setLineDash([3, 2]); c.strokeRect(3, 3, 58, 58); c.setLineDash([]); }
+  else if (kind === 'hologram') { const g = c.createLinearGradient(0, 0, 64, 64); for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, `hsl(${i * 55}, 90%, 70%)`); c.fillStyle = g; c.fillRect(0, 0, 64, 64); c.fillStyle = 'rgba(255,255,255,.16)'; for (let y = 0; y < 64; y += 4) c.fillRect(0, y, 64, 1); c.fillStyle = '#ffffff'; for (let i = 0; i < 12; i++) c.fillRect(r() * 62, r() * 62, 2, 2); }
   else if (kind === 'scales') { c.strokeStyle = shade(.5); c.lineWidth = 2; for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) { c.beginPath(); c.arc(x * 16 + (y % 2) * 8, y * 14, 8, 0, Math.PI); c.stroke(); } }
-  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace; COATS.set(key, t); return t;
+  const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.colorSpace = THREE.SRGBColorSpace; COATS.set(key, t); return t;
 }
 // Particle auras (spawned around a player each frame-ish): c = colours, vy = rise speed, r = radius, y0/h = height band
 const AU = {
@@ -73,11 +81,12 @@ const TRAILS = {
   confetti: { g: () => new THREE.BoxGeometry(.14, .02, .08), cols: 'confetti', vy: 3.5, grav: 14, life: 1.2, sc: 1, sp: 14 }, leaves: { g: () => shapeGeo('leaf'), cols: 'leaves', vy: .8, grav: 1.8, life: 1.9, sc: 1, sp: 2.5, wb: 1.4 },
   coins: { g: () => new THREE.CylinderGeometry(.1, .1, .025, 10), cols: 'coins', vy: 4.5, grav: 18, life: 1.5, sc: 1, sp: 9, bn: .5 }, lightning: { g: () => shapeGeo('bolt'), cols: 'lightning', vy: 0, grav: 0, life: .2, sc: 1.4, up: 1 },
   ink: { g: () => shapeGeo('disc'), cols: 'ink', flat: 1, vy: 0, life: 2.5, sc: .45, gr: .05 }, petals: { g: () => shapeGeo('petal'), cols: 'petals', vy: .9, grav: 1.2, life: 1.9, sc: 1, sp: 2, wb: 1.5 },
+  zzz: { g: () => shapeGeo('zee'), cols: 'zee', vy: .9, grav: 0, life: 1.8, sc: .9, gr: .25, wb: .5 },
   notes: { g: () => shapeGeo('note'), cols: 'notes', vy: 1.3, grav: 0, life: 1.5, sc: .9, wb: .9 }, flake: { g: () => shapeGeo('flake'), cols: 'snow', vy: .4, grav: .9, life: 1.9, sc: .7, sp: 2.5, wb: 1.2 }, paw: { g: () => shapeGeo('paw'), cols: 'paw', flat: 1, vy: 0, life: 2.6, sc: .5 },
 };
 // ---- name tag frames: draw a frame behind the name; returns [text fill, text outline]
 function tagFrame(x, W, H, st, name, ac) {
-  const w = Math.min(246, 60 + name.length * 22), x0 = (W - w) / 2, y0 = H - 64, h = 54, col = '#' + new THREE.Color(ac).getHexString(), dk = new THREE.Color(ac).multiplyScalar(.6).getStyle();
+  const m0 = x.measureText(name).width, w = Math.min(246, (typeof m0 === 'number' && m0 > 0 ? m0 : name.length * 22) + 56), x0 = (W - w) / 2, y0 = H - 64, h = 54, col = '#' + new THREE.Color(ac).getHexString(), dk = new THREE.Color(ac).multiplyScalar(.6).getStyle();
   const rr = r => { x.beginPath(); x.moveTo(x0 + r, y0); x.lineTo(x0 + w - r, y0); x.quadraticCurveTo(x0 + w, y0, x0 + w, y0 + r); x.lineTo(x0 + w, y0 + h - r); x.quadraticCurveTo(x0 + w, y0 + h, x0 + w - r, y0 + h); x.lineTo(x0 + r, y0 + h); x.quadraticCurveTo(x0, y0 + h, x0, y0 + h - r); x.lineTo(x0, y0 + r); x.quadraticCurveTo(x0, y0, x0 + r, y0); x.closePath(); };
   if (st === 'plate') { x.fillStyle = 'rgba(10,10,26,.8)'; rr(14); x.fill(); x.strokeStyle = col; x.lineWidth = 3; rr(14); x.stroke(); return ['#ffffff', '#000000']; }
   if (st === 'ribbon') { x.fillStyle = dk; for (const bx of [x0 - 24, x0 + w - 6]) { x.beginPath(); x.moveTo(bx, y0 + 10); x.lineTo(bx + 30, y0 + 10); x.lineTo(bx + 30, y0 + h); x.lineTo(bx, y0 + h); x.lineTo(bx + 12, y0 + h / 2 + 5); x.closePath(); x.fill(); } x.fillStyle = col; x.fillRect(x0, y0, w, h - 6); x.fillStyle = 'rgba(255,255,255,.25)'; x.fillRect(x0, y0, w, 4); return ['#ffffff', dk]; }
@@ -251,10 +260,11 @@ export class World {
     if (h) { h.scale.multiplyScalar(hs); h.position.set(h.position.x * hs, 1.4 + (h.position.y - 1.4) * hs + (hk.hh - .4 * hs), h.position.z * hs); }
     if (h) up.add(h);
     const fr = p.tagframe && p.tagframe !== 'none' ? p.tagframe : '', ttl = p.title && p.title !== 'none' ? OPTS.title.vals[p.title] : '', cv = document.createElement('canvas'); cv.width = 256; cv.height = ttl || fr ? 96 : 64;
-    const x = cv.getContext('2d'); x.font = 'bold 36px sans-serif'; x.textAlign = 'center';
+    const x = cv.getContext('2d'); x.font = 'bold 36px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const ny = fr || ttl ? cv.height - 37 : cv.height / 2;
     const [nf, ns] = fr ? tagFrame(x, 256, cv.height, fr, p.name, ac) : ['#ffffff', '#000000']; x.fillStyle = nf; x.strokeStyle = ns; x.lineWidth = 6;
-    x.strokeText(p.name, 128, cv.height - 20); x.fillText(p.name, 128, cv.height - 20);
-    if (ttl) { x.font = 'bold 26px sans-serif'; x.lineWidth = 5; { const TC = { champ: '#ffd93d', royal: '#c792ff', menace: '#ff6b6b', fire: '#ff9f43', brain: '#7fd8ff', lucky: '#7cf08a', speedy: '#fff176', chill: '#80deea', hoarder: '#ffd93d', sniper: '#ff8a80', turtle: '#a5d6a7', spender: '#80cbc4', sneaky: '#b0bec5', owl: '#9fa8da', rookie: '#c5e1a5', tank: '#bcaaa4', ace: '#ff80ab', gremlin: '#aed581', wizard: '#b388ff', goat: '#ffe082', noob: '#90caf9', chaos: '#ff5252', zen: '#a7ffeb' }; if (p.title === 'legend') { const gr = x.createLinearGradient(30, 0, 226, 0); ['#ff4d6d', '#ffd93d', '#7cf08a', '#4dd0e1', '#b28dff'].forEach((c, i) => gr.addColorStop(i / 4, c)); x.fillStyle = gr; } else x.fillStyle = TC[p.title] || '#ffd93d'; } x.strokeText(ttl, 128, 30); x.fillText(ttl, 128, 30); }
+    x.strokeText(p.name, 128, ny); x.fillText(p.name, 128, ny);
+    if (ttl) { x.font = 'bold 26px sans-serif'; x.lineWidth = 5; { const TC = { champ: '#ffd93d', royal: '#c792ff', menace: '#ff6b6b', fire: '#ff9f43', brain: '#7fd8ff', lucky: '#7cf08a', speedy: '#fff176', chill: '#80deea', hoarder: '#ffd93d', sniper: '#ff8a80', turtle: '#a5d6a7', spender: '#80cbc4', sneaky: '#b0bec5', owl: '#9fa8da', rookie: '#c5e1a5', tank: '#bcaaa4', ace: '#ff80ab', gremlin: '#aed581', wizard: '#b388ff', goat: '#ffe082', noob: '#90caf9', chaos: '#ff5252', zen: '#a7ffeb' }; if (p.title === 'legend') { const gr = x.createLinearGradient(30, 0, 226, 0); ['#ff4d6d', '#ffd93d', '#7cf08a', '#4dd0e1', '#b28dff'].forEach((c, i) => gr.addColorStop(i / 4, c)); x.fillStyle = gr; } else x.fillStyle = TC[p.title] || '#ffd93d'; } x.strokeText(ttl, 128, 22); x.fillText(ttl, 128, 22); }
     const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv) }));
     tag.scale.set(3, ttl || fr ? 1.125 : .75, 1); tag.position.y = 2.8 + dy + (ttl || fr ? .18 : 0);
     g.add(b, up, tag);
@@ -340,6 +350,7 @@ export class World {
   }
   rag(id, o) { const e = this.m.get(id); if (!e) return; if (o) { e.rag = o; if (!e.ragOn) { e.ragOn = true; e.hop = false; } } else if (e.rag) { e.rag = null; e.ragOn = false; this.resetPose(id); e.g.scale.setScalar(1); e.g.position.y = e.by || 0; } }   // ragdoll: o = { y, rx, rz } (tumble); null = stand up
   burst(x, y, z, color, n = 14) {
+    if (Q.potato) n = Math.ceil(n / 3);
     this.pg ??= new THREE.BoxGeometry(.18, .18, .18);
     for (let i = 0; i < n; i++) {
       const m = new THREE.Mesh(this.pg, new THREE.MeshBasicMaterial({ color, transparent: true })); m.position.set(x, y, z); this.scene.add(m);
@@ -358,24 +369,24 @@ export class World {
   setPets(v) { this.petsOn = v; for (const e of this.m.values()) if (e.pet) e.pet.g.visible = v && e.g.visible; }
   petStep(e, dt) {         // the pet trails behind its owner, hops/bobs by itself, and turns toward where it is going (or toward you when idle)
     const pt = e.pet, pg = pt.g, gp = e.g.position, ry = e.g.rotation.y, pting = pt.petT > 0; if (pting) { pt.petT -= dt; pt.wasP = true; if (pt.petT <= 0) e.leanT = 0; }
-    const tx = pting ? gp.x + Math.sin(ry) * .85 : gp.x - Math.sin(ry) * 1.1 + Math.cos(ry) * .55, tz = pting ? gp.z + Math.cos(ry) * .85 : gp.z - Math.cos(ry) * 1.1 - Math.sin(ry) * .55;
+    const tx = pting ? gp.x + Math.sin(ry) * 1.5 : gp.x - Math.sin(ry) * 1.1 + Math.cos(ry) * .55, tz = pting ? gp.z + Math.cos(ry) * 1.5 : gp.z - Math.cos(ry) * 1.1 - Math.sin(ry) * .55;
     if (pt.fresh || Math.hypot(pg.position.x - tx, pg.position.z - tz) > 5) { pg.position.set(tx, 0, tz); pt.fresh = false; }
     const k = Math.min(1, dt * (pting ? 9 : 4)), ox = pg.position.x, oz = pg.position.z; pg.position.x += (tx - ox) * k; pg.position.z += (tz - oz) * k;
     const mvp = Math.hypot(pg.position.x - ox, pg.position.z - oz) > .004;
     const ang = mvp ? Math.atan2(pg.position.x - ox, pg.position.z - oz) : Math.atan2(gp.x - pg.position.x, gp.z - pg.position.z); let da = ang - pg.rotation.y; da = Math.atan2(Math.sin(da), Math.cos(da)); pg.rotation.y += da * Math.min(1, dt * 8);
-    pg.visible = e.g.visible && this.petsOn !== false; pt.tick(this.t, dt, mvp); pg.position.y += (e.by || 0) + (pt.hover || 0);
+    pg.visible = e.g.visible && this.petsOn !== false && !Q.potato; pt.tick(this.t, dt, mvp); pg.position.y += (e.by || 0) + (pt.hover || 0);
     if (pting) { const hm = pt.hand ??= this.handMesh(e.id, 2.1); if (hm) { hm.visible = true; hm.position.set(pg.position.x + Math.sin(this.t * 6) * .2, pg.position.y + .5 + Math.abs(Math.cos(this.t * 6)) * .07, pg.position.z); hm.rotation.z = Math.sin(this.t * 6) * .35; hm.rotation.y = ry; } }
     else if (pt.hand) { this.scene.remove(pt.hand); pt.hand = null; }
-    if (pting) { const R = PET_REACT[pt.k] || { fx: 'hearts', rate: .15 }; R.anim?.(pg, this.t); if ((pt.fxT = (pt.fxT || 0) - dt) <= 0) { pt.fxT = R.rate; this.trailBit({ x: pg.position.x, y: pg.position.y + .2, z: pg.position.z }, R.fx); } }
+    if (pting) { const R = PET_REACT[pt.k] || { fx: 'hearts', rate: .15 }; R.anim?.(pg, this.t);  }
     else if (pt.wasP) { pt.wasP = false; pg.scale.setScalar(1); pg.rotation.x = 0; pg.rotation.z = 0; }
   }
-  rollDice(id, vals, style = 'classic') {      // 3D dice drop, tumble, bounce and land with the rolled number facing up
+  rollDice(id, vals, style = 'classic', size = 1) {      // 3D dice drop, tumble, bounce and land with the rolled number facing up
     const e = this.m.get(id); if (!e) return; const p = e.g.position, n = vals.length, S = DICE[style] || DICE.classic, gy = e.by || 0, up = new THREE.Vector3(0, 1, 0);
     vals.forEach((v, i) => {
       const m = makeDie(style), nv = new THREE.Vector3(...(FACE_N[v] || FACE_N[1])), qf = new THREE.Quaternion().setFromAxisAngle(up, Math.random() * 6.28).multiply(new THREE.Quaternion().setFromUnitVectors(nv, up));
       const ex = p.x + (i - (n - 1) / 2) * 1 + (Math.random() - .5) * .3, ez = p.z + .6 + (Math.random() - .5) * .3, sx = ex + (Math.random() - .5) * 1.6, sz = ez - 1.8 + (Math.random() - .5);
-      m.position.set(sx, gy + 6, sz); this.scene.add(m);
-      (this.dice ||= []).push({ m, t: -i * .12, D: S.D ?? 1.5, sx, sz, ex, ez, gy, qf, ax: new THREE.Vector3(Math.random() - .5, Math.random() - .5, Math.random() - .5).normalize(), sp: 14 + Math.random() * 8, S, tr: 0 });
+      m.scale.setScalar(size); m.position.set(sx, gy + 6, sz); this.scene.add(m);
+      (this.dice ||= []).push({ m, t: -i * .12, D: S.D ?? 1.5, sx, sz, ex, ez, gy, size, h: .35 * size, qf, ax: new THREE.Vector3(Math.random() - .5, Math.random() - .5, Math.random() - .5).normalize(), sp: 14 + Math.random() * 8, S, tr: 0 });
     });
   }
   diceStep(dt) {
@@ -383,11 +394,11 @@ export class World {
     for (let i = this.dice.length - 1; i >= 0; i--) {
       const d = this.dice[i]; d.t += dt; if (d.t < 0) continue; const u = Math.min(1, d.t / d.D), BN = d.S.bounce ?? 1, arc = (a, b, h) => { const s2 = (u - a) / (b - a); return 4 * h * BN * s2 * (1 - s2); };
       const y = u < .5 ? 5.4 * (1 - (u / .5) ** 2) : u < .78 ? arc(.5, .78, .9) : u < .92 ? arc(.78, .92, .3) : 0, eu = Math.min(1, u / .92), e2 = 1 - (1 - eu) ** 2;
-      d.m.position.set(d.sx + (d.ex - d.sx) * e2, d.gy + .35 + y, d.sz + (d.ez - d.sz) * e2);
+      d.m.position.set(d.sx + (d.ex - d.sx) * e2, d.gy + (d.h ?? .35) + y, d.sz + (d.ez - d.sz) * e2);
       d.m.quaternion.copy(new THREE.Quaternion().setFromAxisAngle(d.ax, (1 - u) ** 2 * d.sp).multiply(d.qf));
       if (d.S.trail && u < .9 && (d.tr -= dt) <= 0) { d.tr = .05; this.auraBit({ aura: d.S.trail, g: { position: d.m.position } }); }
       for (const [k, at, sz] of [['b1', .5, 10], ['b2', .78, 6], ['b3', .92, 4]]) if (u >= at && !d[k]) { d[k] = 1; this.burst(d.m.position.x, d.gy + .1, d.m.position.z, d.S.land || '#ffffff', sz); if (k === 'b1') this.shake(d.S.shake ?? .07, .12); }
-      if (d.t > d.D + .9) { const sc = Math.max(0, 1 - (d.t - d.D - .9) / .3); d.m.scale.setScalar(sc); if (sc <= 0) { this.scene.remove(d.m); d.m.geometry.dispose(); d.m.material.forEach(mm => mm.dispose()); this.dice.splice(i, 1); } }
+      if (d.t > d.D + .9) { const sc = Math.max(0, 1 - (d.t - d.D - .9) / .3); d.m.scale.setScalar(sc * (d.size || 1)); if (sc <= 0) { this.scene.remove(d.m); d.m.geometry.dispose(); d.m.material.forEach(mm => mm.dispose()); this.dice.splice(i, 1); } }
     }
   }
   fxMany(id, kind, n = 10) { const e = this.m.get(id); if (e) for (let i = 0; i < n; i++) this.fxBit(e, kind); }
@@ -398,6 +409,17 @@ export class World {
     this.stopGait(e); this.setProp(id, kind); e.hold = { k: kind, t: 0 };
   }
   release(e) { e.hold = null; this.clearProp(e); }
+  stopAll(id) {          // the Stop button in the emote wheel: ends any emote, held item, move style or hold pose
+    const e = this.m.get(id); if (!e) return; this.release(e); this.stopGait(e); this.endHoldPose(e);
+    if (e.emo) { e.emo = null; e.leanT = 0; e.g.rotation.x = 0; e.g.rotation.z = 0; e.g.scale.setScalar(1); if (!e.hop) e.g.position.y = e.by || 0; }
+  }
+  holdPose(id, kind) { const e = this.m.get(id); if (!e) return; if (e.hpose?.k === kind) return this.endHoldPose(e); this.release(e); this.stopGait(e); e.hpose = { k: kind, t: 0 }; }
+  endHoldPose(e) { if (!e.hpose) return; e.hpose = null; e.g.rotation.x = 0; e.g.rotation.z = 0; e.g.scale.setScalar(1); if (!e.hop) e.g.position.y = e.by || 0; }
+  holdPoseStep(e, dt) {
+    const H = HOLDS[e.hpose.k]; if (!H) return; const t = e.hpose.t += dt, s = { y: 0, rx: 0, rz: 0, sx: 1, sy: 1, sz: 1, dry: 0 }; H.fn(s, t, dt);
+    if (!e.hop) e.g.position.y = (e.by || 0) + s.y; e.g.rotation.x = s.rx; e.g.rotation.z = s.rz; e.g.scale.set(s.sx, s.sy, s.sz); if (s.dry) e.g.rotation.y += s.dry;
+    if (H.fx && ((e.hpose.f = (e.hpose.f || 0) - dt) <= 0)) { e.hpose.f = H.rate; const v = new THREE.Vector3(0, H.head ?? 1.5, 0); e.g.localToWorld(v); if (H.trail) this.trailBit({ x: v.x, y: v.y - .25, z: v.z }, H.fx); else this.fxBit(e, H.fx); }
+  }
   setGait(id, kind, prop) {     // a walk style that replaces the normal walk until you pick it again
     const e = this.m.get(id); if (!e) return; if (e.gait === kind) return this.stopGait(e);
     this.release(e); e.gait = kind; e.gt = 0; if (prop) this.setProp(id, prop); else this.clearProp(e);
@@ -411,13 +433,14 @@ export class World {
   fxBit(e, kind) { const ka = e.aura; e.aura = kind; this.auraBit(e); e.aura = ka; }
   dust(e, col = '#ffffff', n = 8) { const p = e.g.position; this.burst(p.x, (e.by || 0) + .1, p.z, col, n); }
   auraBit(e) {
-    const a = AU[e.aura]; if (!a) return; this.pg ??= new THREE.BoxGeometry(.18, .18, .18);
+    const a = AU[e.aura]; if (!a || Q.potato) return; this.pg ??= new THREE.BoxGeometry(.18, .18, .18);
     const ang = Math.random() * 6.283, rad = a.r * (.5 + Math.random() * .5), p = e.g.position, j = a.jit || .4;
     const m = new THREE.Mesh(this.pg, new THREE.MeshBasicMaterial({ color: new THREE.Color(a.c[Math.random() * a.c.length | 0]), transparent: true }));
     m.scale.setScalar((a.sc ?? .8) * (.6 + Math.random() * .6)); m.position.set(p.x + Math.cos(ang) * rad, p.y + a.y0 + Math.random() * a.h, p.z + Math.sin(ang) * rad); this.scene.add(m);
     this.parts.push({ m, vx: (Math.random() - .5) * j - Math.sin(ang) * .3, vy: a.vy, vz: (Math.random() - .5) * j + Math.cos(ang) * .3, life: a.life, l0: a.life, g: 0 });
   }
-  trailBit(p, kind) {      // every trail is its own shape + motion (see TRAILS): ribbons on the ground, rising hearts, bouncing coins, flickering bolts...
+  trailBit(p, kind) {
+    if (Q.potato) return;      // every trail is its own shape + motion (see TRAILS): ribbons on the ground, rising hearts, bouncing coins, flickering bolts...
     const T = TRAILS[kind] || TRAILS.sparkle, cs = TR[T.cols];
     const col = kind === 'rainbow' ? new THREE.Color().setHSL((this.t * .8) % 1, 1, .6) : cs ? new THREE.Color(cs[Math.random() * cs.length | 0]) : new THREE.Color(0xffffff);
     const m = new THREE.Mesh(T.g(), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: T.op ?? 1, side: THREE.DoubleSide, depthWrite: false }));
@@ -444,7 +467,7 @@ export class World {
   // ---- player poses (all cosmetic; safe to call on every client)
   put(id, x, z, ry, y = 0) {                // teleport (no sliding); ry = facing (0 = toward the default camera / +z); y = standing height
     const e = this.m.get(id); if (!e) return; this.resetPose(id);
-    this.clearProp(e); e.gait = null; e.hold = null; if (e.pet) e.pet.fresh = true; if (e.rag) { e.rag = null; e.ragOn = false; } e.hop = false; e.hv = 0; e.leanT = 0; e.g.visible = true; e.g.scale.setScalar(1); e.g.rotation.x = 0; e.g.rotation.z = 0;
+    this.clearProp(e); e.gait = null; e.hold = null; e.hpose = null; if (e.pet) e.pet.fresh = true; if (e.rag) { e.rag = null; e.ragOn = false; } e.hop = false; e.hv = 0; e.leanT = 0; e.g.visible = true; e.g.scale.setScalar(1); e.g.rotation.x = 0; e.g.rotation.z = 0;
     e.tx = x; e.tz = z; e.by = y; e.ty = undefined; e.g.position.set(x, y, z); if (ry != null) { e.g.rotation.y = ry; e.face = ry; }
   }
   lift(id, y) { const e = this.m.get(id); if (e) { e.by = y; if (!e.hop) e.g.position.y = y; } }   // set standing height (hops/emotes stack on top of it)
@@ -549,6 +572,7 @@ export class World {
       if (e.hold && (mv || (e.hold.t += dt) > 40)) this.release(e);
       if (e.prop?.tick) e.prop.tick(dt, this.t, this, e, mv);
       if (e.gait) this.gaitStep(e, dt, mv);
+      if (e.hpose) { if (mv) this.endHoldPose(e); else this.holdPoseStep(e, dt); }
     }
     this.r.render(this.scene, this.cam);
   }

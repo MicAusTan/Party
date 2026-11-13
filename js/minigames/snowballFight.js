@@ -3,6 +3,7 @@ import { sfx } from '../sfx.js';
 import { arena } from './arena.js';
 import { topDown, ringPts, pine, flakes } from './kit.js';
 // Set: a frozen pond in the mountains. A shiny ice rink inside a snowbank, igloos, snowmen and snowy pines around it, and snow falling over everything.
+import { linger } from './util.js';
 export default {
   name: 'Snowball Fight', desc: 'Throw snowballs with SPACE or a left-click in the direction you\'re facing (move to aim). 3 hits and you\'re out. Last one standing wins. WASD to move.',
   create(ctx) {
@@ -19,6 +20,7 @@ export default {
     addEventListener('keydown', kd); const pd = e => { if (e.button === 0 && !e.target.closest?.('button,input')) kd({ code: 'Space' }); }; addEventListener('pointerdown', pd);
     const pack = () => ({ p: A.pack(), b: balls.map(b => [+b.x.toFixed(2), +b.z.toFixed(2)]), h: hp });
     let snap = pack();
+    const lin = linger(2.2);
     function step(dt) {
       time += dt;
       A.bots(dt, (id, s, sk) => {
@@ -39,7 +41,7 @@ export default {
         return true;
       });
       const al = ids.filter(id => st[id].alive);
-      if (al.length <= (ids.length > 1 ? 1 : 0) || time > 60) { over = true; ctx.send(pack()); ctx.finish([...al, ...out.reverse()]); }
+      { const o = lin(al.length <= (ids.length > 1 ? 1 : 0) || time > 60, dt, () => [...al, ...out.slice().reverse()]); if (o) { over = true; ctx.send(pack()); ctx.finish(o); } }
     }
     return {
       update(dt) {

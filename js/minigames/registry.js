@@ -11,11 +11,12 @@ import rounds from './rounds.js';
 import quickDraw from './quickDraw.js';
 import stopClock from './stopClock.js';
 import mathRace from './mathRace.js';
+import paintRush from './paintRush.js';
 import coinGrab from './coinGrab.js';
 import dodgeRain from './dodgeRain.js';
 import hotPotato from './hotPotato.js';
 import targetClick from './targetClick.js';
-import colorFloor from './colorFloor.js';
+import crumblingFloor from './crumblingFloor.js';
 import mazeRace from './mazeRace.js';
 import memoryMatch from './memoryMatch.js';
 import tugOfWar from './tugOfWar.js';
@@ -35,7 +36,7 @@ import oddOneOut from './oddOneOut.js';
 import redLight from './redLight.js';
 import flagRush from './flagRush.js';
 import lastStand from './lastStand.js';
-import colorFloor2 from './colorFloor2.js';
+import colorFloor from './colorFloor.js';
 import targetTime from './targetTime.js';
 import parcelRush from './parcelRush.js';
 import colorConnect from './colorConnect.js';
@@ -44,11 +45,11 @@ import { teamGame } from './teamGame.js';
 import tiltTable from './tiltTable.js';
 import parcelPanic from './parcelPanic.js';
 import echoChain from './echoChain.js';
-export const MINIGAMES = { buttonMash, memoryRun, shoveOff, rounds, quickDraw, stopClock, mathRace, coinGrab, dodgeRain, hotPotato, targetClick, colorFloor, mazeRace, memoryMatch, tugOfWar, higherLower, typingRace, rhythmRush, hillHold, relayRace, towerStack, syncPulse, snowballFight, simonSays, numberSort, colorClash, balloonPop, oddOneOut, redLight, flagRush, lastStand, tiltTable, parcelPanic, echoChain };
+export const MINIGAMES = { paintRush, buttonMash, memoryRun, shoveOff, rounds, quickDraw, stopClock, mathRace, coinGrab, dodgeRain, hotPotato, targetClick, crumblingFloor, mazeRace, memoryMatch, tugOfWar, higherLower, typingRace, rhythmRush, hillHold, relayRace, towerStack, syncPulse, snowballFight, simonSays, numberSort, colorClash, balloonPop, oddOneOut, redLight, flagRush, lastStand, tiltTable, parcelPanic, echoChain };
 
 // Team versions of existing games (random teams, averaged placements -- see teamGame.js)
-Object.assign(MINIGAMES, { colorFloor2, targetTime, parcelRush, colorConnect, parkour,
-  teamBalloonPop: teamGame(balloonPop, { name: 'Team Balloon Pop', desc: balloonPop.desc }),
+Object.assign(MINIGAMES, { colorFloor, targetTime, parcelRush, colorConnect, parkour,
+  teamBalloonPop: teamGame(balloonPop, { name: 'Team Balloon Pop', desc: balloonPop.desc + ' TEAM TWIST: balloons are painted in team colours - pop YOUR colour (+1). Popping a rival colour gives you nothing - but it takes those points away from them!' }),
   teamTargetClick: teamGame(targetClick, { name: 'Team Target Click', desc: targetClick.desc, tiers: [{ n: 'Normal', m: 1, pen: 0 }, { n: 'Hard', m: 1.5, pen: 2, d: 'One extra target per team that vanishes faster.' }] }),
-  teamCoinGrab: teamGame(coinGrab, { name: 'Team Coin Grab', desc: coinGrab.desc }),
+  teamCoinGrab: teamGame(coinGrab, { name: 'Team Coin Grab', desc: coinGrab.desc + ' TEAM TWIST: coins are painted in team colours - your own colour is worth 2, a rival colour only 1. Orange coins are still +3 for anyone.' }),
 });

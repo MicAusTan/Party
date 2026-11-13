@@ -2,39 +2,41 @@ import * as THREE from 'three';
 import { sfx } from '../sfx.js';
 import { arena } from './arena.js';
 import { topDown } from './kit.js';
-// Set: a lava cave. The tiles are stone slabs over a glowing lava lake; slabs that vanish drop you into the lava with a splash.
-const G = 6, S = 3.6, H = G * S / 2;
+// Color Floor: the floor is a grid of random colours. A colour flashes on screen - when the timer ends every other colour drops away.
+// Host simulates (arena); everyone renders the same snapshot. Shove is on, edges are deadly. Math.random only (host-side), never ctx.rng.
+const G = 5, S = 3.2, H = G * S / 2, COLS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6], NAMES = ['RED', 'BLUE', 'GREEN', 'YELLOW', 'PURPLE'], MAXR = 16;
+import { linger } from './util.js';
 export default {
-  emotes: false, name: 'Crumbling Floor', desc: 'Tiles flash red, then vanish - but they grow back a few seconds later! Keep moving and stay on solid ground. Last one standing wins. WASD to move, F / Shift / click to shove.',
+  emotes: false, name: 'Color Floor', desc: 'A colour flashes on screen - run and stand on a tile of that colour before time runs out! Every other tile drops away. Falling = out. WASD to move, F / Shift / click to shove. Last one standing wins.',
+  tiers: [{ n: 'Small', m: .8, pen: 0, d: '5 x 5 board.' }, { n: 'Normal', m: 1, pen: 0, d: '7 x 7 board.', def: true }, { n: 'Large', m: 1.25, pen: 0, d: '9 x 9 board, good for big groups.' }],
   create(ctx) {
-    const W = ctx.world, A = arena(ctx, { shove: true, disc: false, radius: 17, set: { ...topDown(W, 13, 20), sky: 0x1a0a08, fog: { color: 0x1a0a08, near: 34, far: 82 }, light: .9, sun: { color: 0xffb070, intensity: 1, pos: [4, 14, 8] } } }), { ids, st, S: SET } = A, host = ctx.isHost, fall = {}, was = {}, splashed = {}, tiles = [];
+    const G = [5, 7, 9][ctx.diff ?? 1], H = G * S / 2;
+    const W = ctx.world, A = arena(ctx, { shove: true, disc: false, radius: H + .6, set: { ...topDown(W, 12 * G / 5, 19 * G / 5), sky: 0x120a2a, fog: { color: 0x120a2a, near: 36, far: 85 }, light: 1, sun: { intensity: 1, pos: [4, 14, 8] } } }), { ids, st, S: SET } = A, host = ctx.isHost, fall = {}, was = {}, splashed = {}, tiles = [];
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
-    const lava = SET.box(140, .5, 140, 0xd8350a, 0, -7.5, 0, { em: 0x8a2200 }); SET.anim((dt, tn) => lava.material.emissive.setRGB(.5 + Math.sin(tn * 1.7) * .08, .12, .02));
-    for (let k = 0; k < 16; k++) { const a = k / 16 * 6.283 + .2, r = 17 + k % 3 * 4; SET.cone(2.2 + k % 4, 7 + k % 5 * 2.6, 0x2a1a17, Math.sin(a) * r, -7.5, Math.cos(a) * r, { seg: 5 }); }       // rock spires
-    const bub = Array.from({ length: 12 }, (_, k) => SET.sph(.45, 0xff7a1a, Math.sin(k * 2.1) * (9 + k % 4 * 4), -7, Math.cos(k * 2.1) * (9 + k % 4 * 4), { basic: true, seg: 6 }));
-    SET.anim((dt, tn) => bub.forEach((b, k) => { const u = Math.abs(Math.sin(tn * 1.1 + k * 1.7)); b.position.y = -7.2 + u * .9; b.scale.setScalar(.4 + u * .9); }));
-    for (let i = 0; i < G * G; i++) {
-      const base = (i + (i / G | 0)) % 2 ? 0x6f7384 : 0x8c90a3;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(S - .15, .4, S - .15), new THREE.MeshStandardMaterial({ color: base, flatShading: true }));
-      m.position.set(-H + S * (i % G + .5), -.2, -H + S * ((i / G | 0) + .5)); m.userData.base = base; SET.root.add(m); tiles.push(m);
-    }
-    const ts = Array(G * G).fill(1), warn = Array(G * G).fill(0), gone = Array(G * G).fill(0); let time = 0, spawnT = 2, out = [], acc = 0, over = false, lt = 0;
+    SET.box(120, .5, 120, 0x0a0618, 0, -9, 0);
+    for (let i = 0; i < G * G; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(S - .15, .4, S - .15), new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true })); m.position.set(-H + S * (i % G + .5), -.2, -H + S * ((i / G | 0) + .5)); SET.root.add(m); tiles.push(m); }
     const tileAt = (x, z) => { const cx = Math.floor((x + H) / S), cz = Math.floor((z + H) / S); return cx < 0 || cx >= G || cz < 0 || cz >= G ? -1 : cz * G + cx; };
-    const pack = () => ({ p: A.pack(), t: ts.join('') });
+    let col = [], gone = false, target = 0, ph = 'show', pt = 1.6, round = 0, out = [], acc = 0, over = false, rt = 0, T = 3, lt = 0;
+    const deal = () => { col = Array.from({ length: G * G }, () => Math.random() * COLS.length | 0); target = Math.random() * COLS.length | 0; let n = col.filter(c => c === target).length; while (n < 5) { const k = Math.random() * col.length | 0; if (col[k] !== target) { col[k] = target; n++; } } };
+    deal(); round = 1; T = 3.4; pt = T;
+    const pack = () => ({ p: A.pack(), c: col.join(''), g: gone ? 1 : 0, tg: target, ph, tl: +Math.max(0, pt).toFixed(2), r: round });
     let snap = pack();
+    const lin = linger(2.2);
     function step(dt) {
-      time += dt;
-      A.bots(dt, (id, s, sk) => { const i = tileAt(s.x, s.z); if (i >= 0 && ts[i] === 1) return null; let b = null, bd = 1e9; for (let k = 0; k < ts.length; k++) { if (ts[k] !== 1) continue; const cx = -H + S * (k % G + .5), cz = -H + S * ((k / G | 0) + .5), d = Math.hypot(cx - s.x, cz - s.z); if (d < bd) { bd = d; b = [cx - s.x, cz - s.z]; } } return b; });
-      A.move(dt);
-      if ((spawnT -= dt) <= 0) {
-        spawnT = Math.max(.8, 2.2 - time * .04); const free = ts.map((v, i) => v === 1 ? i : -1).filter(i => i >= 0);
-        for (let n = 0; n < 2 + (time / 12 | 0) && free.length; n++) { const k = free.splice(Math.random() * free.length | 0, 1)[0]; ts[k] = 2; warn[k] = 1.6; }
-      }
-      for (let i = 0; i < ts.length; i++) { if (ts[i] === 2 && (warn[i] -= dt) <= 0) { ts[i] = 0; gone[i] = (3.2 + Math.random() * 1.6) * [.7, 1, 1.5][ctx.diff ?? 1]; } else if (ts[i] === 0 && (gone[i] -= dt) <= 0) ts[i] = 1; }   // slabs grow back
-      for (const id of ids) { const s = st[id]; if (!s.alive) continue; const i = tileAt(s.x, s.z); if (i < 0 || ts[i] === 0) { s.alive = false; out.push(id); } }
+      rt += dt;
+      A.bots(dt, (id, s, sk) => {
+        if (ph !== 'show' || rt < (s.dl ??= Math.random() * 1.5 * (1.15 - sk))) return null;
+        const i = tileAt(s.x, s.z); if (i >= 0 && col[i] === target) return null;
+        let b = null, bd = 1e9; for (let k = 0; k < col.length; k++) { if (col[k] !== target) continue; const cx = -H + S * (k % G + .5), cz = -H + S * ((k / G | 0) + .5), d = Math.hypot(cx - s.x, cz - s.z); if (d < bd) { bd = d; b = [cx - s.x, cz - s.z]; } } return b;
+      });
+      A.move(dt); pt -= dt;
+      if (ph === 'show' && pt <= 0) { ph = 'drop'; gone = true; pt = 1.7; for (const id of ids) { const s = st[id]; if (!s.alive) continue; const i = tileAt(s.x, s.z); if (i < 0 || col[i] !== target) { s.alive = false; out.push(id); } } }
+      else if (ph === 'drop' && pt <= 0) { round++; deal(); gone = false; ph = 'show'; T = Math.max(1.25, 3.4 - round * .2); pt = T; rt = 0; for (const id of ids) delete st[id].dl; }
+      if (ph === 'show') for (const id of ids) { const s = st[id]; if (s.alive && tileAt(s.x, s.z) < 0) { s.alive = false; out.push(id); } }   // shoved off the edge
       const al = ids.filter(id => st[id].alive);
-      if (al.length <= (ids.length > 1 ? 1 : 0) || time > 90) { over = true; ctx.send(pack()); ctx.finish([...al, ...out.reverse()]); }
+      { const o = lin(al.length <= (ids.length > 1 ? 1 : 0) || round > MAXR, dt, () => [...al, ...out.slice().reverse()]); if (o) { over = true; ctx.send(pack()); ctx.finish(o); } }
     }
+    let prevPh = '', prevR = 0;
     return {
       update(dt) {
         A.input(); lt += dt;
@@ -42,11 +44,16 @@ export default {
         A.show(snap.p); let n = 0;
         for (const id of ids) {
           const q = snap.p[id], g = W.m.get(id)?.g; if (q[2]) n++;
-          if (!q[2] && g) { g.visible = true; fall[id] = (fall[id] || 0) + 30 * dt; g.position.y = Math.max(-40, g.position.y - fall[id] * dt); if (g.position.y < -6.5 && !splashed[id]) { splashed[id] = 1; W.burst(q[0], -6.5, q[1], '#ff7a1a', 26); W.shake(.1, .2); } }
+          if (!q[2] && g) { g.visible = true; fall[id] = (fall[id] || 0) + 30 * dt; g.position.y = Math.max(-40, g.position.y - fall[id] * dt); if (g.position.y < -6.5 && !splashed[id]) { splashed[id] = 1; W.burst(q[0], -6.5, q[1], '#aa66ff', 26); W.shake(.1, .2); } }
           if (was[id] && !q[2]) sfx('fall'); was[id] = q[2];
         }
-        tiles.forEach((m, i) => { const c = snap.t[i]; m.visible = c !== '0'; m.material.color.set(c === '2' ? (Math.sin(lt * 20) > 0 ? 0xff3b30 : 0xffffff) : m.userData.base); });
-        el.innerHTML = `<h3>Alive: ${n}/${ids.length}</h3>`;
+        const tc = COLS[snap.tg];
+        tiles.forEach((m, i) => { const c = +snap.c[i], hit = c === snap.tg; m.visible = !(snap.g && !hit); m.material.color.setHex(COLS[c]); m.material.emissive.setHex(snap.ph === 'show' && hit && Math.sin(lt * 14) > 0 ? 0x444444 : 0); });
+        if (snap.r !== prevR) { prevR = snap.r; sfx('go'); }
+        if (snap.ph !== prevPh) { prevPh = snap.ph; if (snap.ph === 'drop') { sfx('hit'); W.shake(.15, .3); } }
+        const flash = snap.ph === 'show' && Math.sin(lt * 10) > -.2; W.scene.background.setHex(snap.ph === 'show' ? (flash ? tc : 0x120a2a) : 0x120a2a);
+        const hex = '#' + tc.toString(16).padStart(6, '0');
+        el.innerHTML = `<h2 style="background:${hex};border-radius:10px;padding:6px 22px;color:#fff;text-shadow:0 2px 4px #000">STAND ON ${NAMES[snap.tg]}</h2><div>${snap.ph === 'show' ? '⏱ ' + snap.tl.toFixed(1) + 's' : 'DROP!'} &nbsp; Round ${snap.r} &nbsp; Alive: ${n}/${ids.length}</div>`;
       },
       onMessage(m, from) { if (A.onInput(m, from)) return; if (!host && m.p) snap = m; },
       cleanup() { tiles.forEach(m => W.scene.remove(m)); ids.forEach(id => { const g = W.m.get(id)?.g; if (g) g.position.y = 0; }); A.cleanup(); el.remove(); },

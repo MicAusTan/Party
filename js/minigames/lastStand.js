@@ -8,7 +8,7 @@ const HP0 = 10, DUR = 45, TIER = [8, 5, 2], NAMES = ['GOLD', 'SILVER', 'BRONZE',
 const gGeo = new THREE.IcosahedronGeometry(.5, 0), hGeo = new THREE.ConeGeometry(.12, .4, 4), bGeo = new THREE.IcosahedronGeometry(.28, 0);
 export default {
   coop: true,
-  tiers: [{ n: 'Easy', m: .8, pen: 0, d: 'Aim with the MOUSE: click where you want to shoot.' }, { n: 'Normal', m: 1, pen: 0, def: true }, { n: 'Hard', m: 1.4, pen: 0, d: 'More goblins; you shoot a bit faster to compensate.' }],
+  tiers: [{ n: 'Easy', m: .8, pen: 0, d: 'Aim with the MOUSE: click where you want to shoot.' }, { n: 'Normal', m: 1, pen: 0, def: true }, { n: 'Hard', m: 1.5, pen: 0, d: 'More goblins; you shoot a bit faster to compensate.' }],
   name: 'Last Stand', desc: 'CO-OP! Goblins march on the crystal. Shoot them with SPACE or a left-click (move to aim; on Easy click where you want to shoot) - nobody can be hurt, but every goblin that reaches the crystal chips it. Keep it healthy for a better prize, shared by everyone.',
   create(ctx) {
     const W = ctx.world, A = arena(ctx, { set: { ...topDown(W, 13.5, 21), sky: 0x10163a, fog: { color: 0x10163a, near: 40, far: 100 }, light: .8, sun: { color: 0xa8b8ff, intensity: .9, pos: [-6, 16, 8] } } }), { ids, st, S } = A, host = ctx.isHost;

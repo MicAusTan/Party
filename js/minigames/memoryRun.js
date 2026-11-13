@@ -48,7 +48,7 @@ export default {
     const report = (r, out) => ctx.isHost ? apply(ctx.me, r, out) : ctx.send({ r, out });
     const press = i => {
       if (phase !== 'input' || over) return;
-      pr = i; prT = .15; const good = i === seq[step]; sfx(good ? 'click' : 'lose'); W.hop(me, .35); ctx.send({ k: 'm', id: me, i });
+      pr = i; prT = .15; const good = i === seq[step]; sfx(good ? 'n' + (i % 8) : 'lose'); W.hop(me, .35); ctx.send({ k: 'm', id: me, i });
       if (!good) { phase = 'out'; report(round - 1, true); W.emote(me, 'sad'); W.popIcon(me, '❌'); return; }
       if (++step === round) { report(round, false); round++; phase = 'show'; step = 0; lit = -1; t = .8; W.hop(me, .9); }
     };
@@ -56,7 +56,7 @@ export default {
     el.onpointerdown = e => { const i = e.target.dataset.i; if (i != null) press(+i); };
     addEventListener('keydown', key);
 
-    const status = () => phase === 'show' ? 'Watch...' : phase === 'input' ? `Your turn (${step}/${round})` : 'Out! Waiting for others...';
+    const status = () => phase === 'show' ? `👀 Round ${round}: watch the pattern` : phase === 'input' ? `🎯 Your turn! Repeat it: ${step}/${round}` : '💀 Out! Waiting for others...';
     const render = () => {
       el.innerHTML = `<h3>${status()}</h3><div class="tiles">${COLS.map((c, i) =>
         `<div class="tile${lit === i || pr === i ? ' on' : ''}" data-i="${i}" style="background:${c}">${i + 1}</div>`).join('')}</div>` +
@@ -69,7 +69,7 @@ export default {
         time += dt; if (prT > 0 && (prT -= dt) <= 0) pr = -1;
         if (phase === 'show' && (t -= dt) <= 0) {
           if (lit >= 0) { lit = -1; t = .25; }
-          else if (step < round) { lit = seq[step++]; sfx('tick'); t = .55; }
+          else if (step < round) { lit = seq[step++]; sfx('n' + (lit % 8)); t = .55; }
           else { phase = 'input'; step = 0; }
         }
         render();

@@ -37,23 +37,23 @@ export default {
       makePeg(ev.id, ev.ts); const off = Math.abs(ev.ts - 10), gg = W.m.get(ev.id)?.g;
       if (off < .15) { W.emote(ev.id, 'cheer'); if (gg) W.burst(gg.position.x, 1.5, gg.position.z, '#ffd93d', 14); } else if (off > 2) W.emote(ev.id, 'sad'); else W.hop(ev.id, .5);
     };
-    const stop = (ts, auto) => { stopped = true; stopT = ts; if (!auto) sfx('click'); sb.report(auto ? 5000 : Math.round(Math.abs(ts - 10) * 1000)); const ev = { k: 's', id: me, ts: +ts.toFixed(3) }; ctx.send(ev); reveal(ev); pend.splice(0).forEach(reveal); };
+    const stop = (ts, auto) => { stopped = true; stopT = ts; if (!auto) { sfx('ding'); if (Math.abs(ts - 10) <= .06) { sfx('correct'); W.popIcon(me, '✨'); } } sb.report(auto ? 5000 : Math.round(Math.abs(ts - 10) * 1000)); const ev = { k: 's', id: me, ts: +ts.toFixed(3) }; ctx.send(ev); reveal(ev); pend.splice(0).forEach(reveal); };
     const press = () => { if (!stopped) stop(t); };
     const key = e => { if (e.code === 'Space' && !e.repeat) press(); };
-    addEventListener('keydown', key); addEventListener('pointerdown', press);
+    addEventListener('keydown', key);
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
 
     S.anim((dt, tt) => {
       hand.visible = stopped || t < HIDE; hand.rotation.y = -ang(stopped ? stopT : t); handBar.material.color.setHex(stopped ? 0xffd93d : 0xff5a5f);
       for (const p of pegs) { p.userData.t = Math.min(1, p.userData.t + dt * 4); const u = p.userData.t; p.scale.setScalar(u < 1 ? 1 + 2.7 * Math.pow(u - 1, 3) + 1.7 * Math.pow(u - 1, 2) : 1); }
-      const main = stopped ? stopT.toFixed(2) : t < HIDE ? t.toFixed(2) : '?.??', sub = stopped ? `off by ${Math.round(Math.abs(stopT - 10) * 1000)}ms` : 'target 10.00', key2 = main + sub;
+      const main = stopped ? stopT.toFixed(2) : t < HIDE ? t.toFixed(2) : '?.??', sub = stopped ? `${Math.abs(stopT - 10) <= .06 ? 'PERFECT! ' : ''}off by ${Math.round(Math.abs(stopT - 10) * 1000)}ms` : 'target 10.00', key2 = main + sub;
       if (key2 !== drawn) { drawn = key2; dig.draw((cc, w, h) => { cc.fillStyle = '#000b'; cc.fillRect(0, 0, w, h); cc.textAlign = 'center'; cc.fillStyle = stopped ? '#ffd93d' : '#7cf08a'; cc.font = 'bold 58px monospace'; cc.fillText(main, w / 2, 56); cc.fillStyle = '#fff'; cc.font = 'bold 26px sans-serif'; cc.fillText(sub, w / 2, 86); }); }
     });
     return {
       update(dt) {
         t += dt; sb.prog(0), sb.tick(dt);
         if (!stopped && t >= 15) stop(t, true);
-        el.innerHTML = `<h2>${stopped ? stopT.toFixed(2) : t < HIDE ? t.toFixed(2) : '?.??'}</h2>` + (stopped ? `<div>Off by ${Math.round(Math.abs(stopT - 10) * 1000)}ms. Waiting for others...</div>` : '<div>Target: 10.00</div>');
+        el.innerHTML = `<h2>${stopped ? stopT.toFixed(2) : t < HIDE ? t.toFixed(2) : '?.??'}</h2>` + (stopped ? `<div>${Math.abs(stopT - 10) <= .06 ? 'PERFECT! ' : ''}Off by ${Math.round(Math.abs(stopT - 10) * 1000)}ms. Waiting for others...</div>` : '<div>Target: 10.00</div>');
       },
       endNow() { sb.endNow(); },
       onMessage(m, from) {
@@ -64,7 +64,7 @@ export default {
         }
         sb.onMessage(m, from);
       },
-      cleanup() { removeEventListener('keydown', key); removeEventListener('pointerdown', press); el.remove(); S.cleanup(); },
+      cleanup() { removeEventListener('keydown', key); el.remove(); S.cleanup(); },
     };
   },
 };

@@ -6,7 +6,7 @@ let B = BOARDS.classic; const setBoard = id => { B = BOARDS[id] || BOARDS.classi
 const COL = { blue: 0x4aa3ff, red: 0xff5a5a, green: 0x58d68d, shop: 0xb06bff, duel: 0xff9f43, warp: 0x00cec9, toll: 0xc8a14a, slot: 0xff2d95, dash: 0xffe14d, thief: 0x7f8c8d, swap: 0xfd79a8, geyser: 0x5dade2, forge: 0xe67e22, vent: 0xc0392b, roulette: 0x16a085, jackpot: 0xf1c40f, metro: 0x3498db, knight: 0xa29bfe, queen: 0xfdcb6e, bishop: 0x55efc4, king: 0xd63031 }, REWARD = [10, 6, 3, 0];
 const MAXI = 3;
 const ITEMS = {
-  big: { n: 'Big Die', e: '🎯', c: 8, d: 'Next roll is 4-8' },
+  big: { n: 'Big Die', e: '🎯', c: 8, d: 'One huge die that only rolls 4-6' },
   dbl: { n: 'Double Dice', e: '🎲', c: 6, d: 'Next roll is two dice' },
   shield: { n: 'Shield', e: '🛡️', c: 5, d: 'Passive: blocks the next theft, swap or pickpocket', p: true },
   magnet: { n: 'Star Magnet', e: '🧲', c: 10, d: 'The ⭐ jumps 5-8 spaces ahead of you' },
@@ -22,12 +22,13 @@ export class Board {
     o.net.on('roll', (_, from) => this.roll(from));
     o.net.on('act', (d, from) => this.act(from, d));
     addEventListener('keydown', e => { if (e.code === 'Space' && !e.repeat && !/INPUT|SELECT/.test(e.target.tagName)) this.tryRoll(); });
+    addEventListener('keydown', e => { if (e.code === 'KeyB' && !e.repeat && this.active && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { this.hideUI = !this.hideUI; this.render(); } });   // B = hide / show the board panel
     addEventListener('keydown', e => { if (e.code === 'KeyV' && !e.repeat && this.active && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { this.mapView = !this.mapView; this.render(); } });   // V = toggle the whole-map camera
     document.getElementById('board').onclick = e => {
       const b = e.target.closest('button'); if (!b || b.disabled) return;
       if (b.id === 'roll') this.tryRoll();
       else if (b.dataset.a === 'force') { if (o.net.isHost) this.force(); }
-      else if (b.dataset.a === 'skiproll') { if (o.net.isHost) this.skipRoll(); }
+      else if (b.dataset.a === 'skiproll') this.skipAny();
       else if (b.dataset.a === 'hide') { this.hideUI = !this.hideUI; this.render(); }
       else if (b.dataset.a === 'guide') { this.showGuide = !this.showGuide; this.render(); }
       else if (b.dataset.a) o.net.isHost ? this.act('host', { a: b.dataset.a, k: b.dataset.k }) : o.net.send('act', { a: b.dataset.a, k: b.dataset.k });
@@ -56,6 +57,7 @@ export class Board {
   }
   // ---- both sides
   tryRoll() {
+    if (this.active && this.s?.phase === 'rolling') return this.skipAny();          // Space (or the button) skips the dice animation
     const { net } = this.o, s = this.s;
     if (!this.active || s.phase !== 'roll' || s.order[s.turn] !== net.id) return;
     net.isHost ? this.roll('host') : net.send('roll');
@@ -75,7 +77,7 @@ export class Board {
   }
   diff(a, b) {
     const f = this.o.fx; if (!f) return;
-    if (b.phase === 'rolling' && a.phase !== 'rolling') f('dice', { id: b.order[b.turn], vals: b.dice });
+    if (b.phase === 'rolling' && a.phase !== 'rolling') f('dice', { id: b.order[b.turn], vals: b.dice, big: !!b.big });
     if (b.skip !== a.skip) f('diceSkip');
     if (b.phase === 'moving' && a.phase !== 'moving') f('roll', b.roll);
     for (const id of b.order) {
@@ -195,9 +197,9 @@ export class Board {
     if (mine && s.phase === 'roll') act = '<button id="roll">🎲 Roll (Space)</button>' + inv.filter(k => !ITEMS[k].p).map(k => `<button data-a="use" data-k="${k}">${ITEMS[k].e} Use ${ITEMS[k].n}</button>`).join('');
     if (mine && s.phase === 'shop') act = '<b>🛒 Shop</b>' + (s.stock || []).map(k => { const t = ITEMS[k]; return `<button data-a="buy" data-k="${k}"${coins < t.c || inv.length >= MAXI ? ' disabled' : ''}>${t.e} ${t.n} (${t.c}🪙)<br><small>${t.d}</small></button>`; }).join('') + '<button data-a="leave">Leave shop</button>';
     if (mine && s.phase === 'slot') act = '<b>🎰 Slot machine</b>' + [3, 6, 10].map(b => `<button data-a="bet" data-k="${b}"${coins < b ? ' disabled' : ''}>Bet ${b} 🪙</button>`).join('') + '<button data-a="leave">Walk away</button>';
-    if (mine && s.phase === 'target') act = `<b>${s.pick.k === 'duel' ? '⚔️ Who do you duel?' : s.pick.k === 'thief' ? '🦹 Who do you rob?' : '🔄 Who do you swap with?'}</b>` + s.pick.opts.map(v => `<button data-a="target" data-k="${v}">${nm(v)} · 🪙${s.coins[v]} ⭐${s.stars[v]}${s.items[v]?.includes('shield') && s.pick.k !== 'duel' ? ' 🛡️' : ''}</button>`).join('');
+    if (mine && s.phase === 'target') act = `<b>${s.pick.k === 'duel' ? '⚔️ Who do you duel?' : s.pick.k === 'thief' ? '🦹 Who do you rob?' : '🔄 Who do you swap with?'}</b>` + s.pick.opts.map(v => `<button data-a="target" data-k="${v}">${nm(v)} · 🪙${s.coins[v]} ⭐${s.stars[v]}${s.items[v]?.includes('shield') && s.pick.k !== 'duel' ? ' 🛡️' : ''}</button>`).join('') + (s.pick.k !== 'duel' ? `<button class="ghost" data-a="target" data-k="none">${s.pick.k === 'swap' ? "Don't swap" : "Don't rob anyone"}</button>` : '');
     let extra = ''; if (s.phase === 'duelshow' && s.duel) { const d = s.duel, face = v => v == null ? '🎲' : ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'][v]; extra = `<div class="duelbox"><div>${nm(d.a)}<span class="die${d.ra == null ? ' roll' : ''}">${face(d.ra)}</span></div><b>VS</b><div>${nm(d.b)}<span class="die${d.rb == null ? ' roll' : ''}">${face(d.rb)}</span></div><div class="dres">${d.ra == null ? 'Rolling...' : d.w ? nm(d.w) + ' wins ' + d.n + ' 🪙!' : "It's a tie!"}</div></div>`; }
-    if (s.phase === 'rolling') act = this.o.net.isHost ? '<button data-a="skiproll">Skip roll animation</button>' : '<i>Rolling...</i>';
+    if (s.phase === 'rolling') act = mine || this.o.net.isHost ? '<button data-a="skiproll">Skip roll animation (Space)</button>' : '<i>Rolling...</i>';
     if (mine && s.phase === 'choose') act = '<b>🔀 Choose your path</b>' + s.opts.map(k => `<button data-a="go" data-k="${k}">${B.sp[k].label || 'Go this way'}</button>`).join('');
     if (this.o.net.isHost && !mine && ['roll', 'choose', 'shop', 'slot', 'target'].includes(s.phase) && !ps[cur]?.bot) act = `<button data-a="force">⏩ ${s.phase === 'roll' ? 'Roll for' : 'Skip'} ${nm(cur)}</button>`;     // host override: nobody has to wait for an AFK player
     this.drawGuide(); if (this.hideUI) { el.innerHTML = '<button class="ghost mini" data-a="hide">Show board ▸</button>'; return; }
@@ -235,9 +237,9 @@ export class Board {
     const m = s.next[id]; s.next[id] = null;
     let left, why = '', dice;
     if (m === 'dbl') { const a = 1 + rand(6), b = 1 + rand(6); left = a + b; dice = [a, b]; why = ` (double dice: ${a} + ${b})`; }
-    else if (m === 'big') { left = 4 + rand(5); const lo = Math.max(1, left - 6), hi = Math.min(6, left - 1), a = lo + rand(hi - lo + 1); dice = [a, left - a]; why = ' (big dice!)'; }
+    else if (m === 'big') { left = 4 + rand(3); dice = [left]; why = ' (big die: 4-6)'; }
     else { left = 1 + rand(6); dice = [left]; }
-    s.roll = left; s.dice = dice; s.why = why; s.phase = 'rolling'; s.log = `${this.name(id)} is rolling...`; this.push();      // the dice tumble for ~2s, then the piece moves
+    s.roll = left; s.dice = dice; s.big = m === 'big'; s.why = why; s.phase = 'rolling'; s.log = `${this.name(id)} is rolling...`; this.push();      // the dice tumble for ~2s, then the piece moves
     this.later(() => this.finishRoll(id), 2000);
   }
   walk(id, left) {       // advance one space at a time; forks pause for a choice
@@ -361,6 +363,7 @@ export class Board {
     const s = this.s; if (!this.active || s.phase !== 'rolling' || s.order[s.turn] !== id) return;
     const left = s.roll; s.phase = 'moving'; s.log = `${this.name(id)} rolled ${left}!${s.why || ''}`; this.push(); this.later(() => this.walk(id, left), 500);
   }
+  skipAny() { const o = this.o; if (this.s?.phase !== 'rolling') return; if (o.net.isHost) this.skipRoll(); else o.net.send('act', { a: 'skiproll' }); }      // the roller (and the host) can skip; the host validates
   skipRoll() { const s = this.s; if (s.phase !== 'rolling') return; s.skip = (s.skip || 0) + 1; this.finishRoll(s.order[s.turn]); }     // host button: no waiting for the dice
   askTarget(id, k, ret = 'next') {      // thief / swap / duel: the player picks the rival (bots pick on their own, the host can skip an AFK)
     const s = this.s, opts = s.order.filter(v => v !== id); if (!opts.length) return false;
@@ -370,6 +373,7 @@ export class Board {
   }
   resolveTarget(id, v) {
     const s = this.s, { k, ret } = s.pick; s.pick = null;
+    if (v === 'none') { s.log = `${this.name(id)} chose not to ${k === 'swap' ? 'swap' : 'rob anyone'}.`; if (ret === 'roll') { s.phase = 'roll'; return this.push(); } s.phase = 'resolve'; this.push(); return this.later(() => { if (this.active && s.phase === 'resolve') this.nextTurn(); }, 1200); }
     if (k === 'duel') return this.startDuel(id, v);
     s.log = k === 'thief' ? this.thief(id, v) : this.swapPlaces(id, v);
     if (ret === 'roll') { s.phase = 'roll'; return this.push(); }
@@ -399,7 +403,8 @@ export class Board {
       const reel = mult === 5 ? '7️⃣7️⃣7️⃣' : mult === 2 ? p[0].repeat(3) : mult === 1 ? p[0] + p[0] + p[1] : p[0] + p[1] + p[2];
       s.coins[id] += b * mult; s.log = `🎰 ${this.name(id)} bet ${b} 🪙 ${reel} → ${mult > 0 ? '+' : ''}${b * mult} 🪙${mult === 5 ? ' JACKPOT!' : ''}`; return this.nextTurn();
     }
-    if (d.a === 'target' && s.phase === 'target' && s.pick?.opts.includes(d.k)) return this.resolveTarget(id, d.k);
+    if (d.a === 'skiproll' && s.phase === 'rolling') return this.skipRoll();
+    if (d.a === 'target' && s.phase === 'target' && s.pick && ((d.k === 'none' && s.pick.k !== 'duel') || s.pick.opts.includes(d.k))) return this.resolveTarget(id, d.k);
     if (d.a === 'go' && s.phase === 'choose' && s.opts.includes(+d.k)) { const left = s.left; s.phase = 'moving'; s.opts = null; return this.stepTo(id, +d.k, left); }
     if (d.a === 'buy' && s.phase === 'shop' && t && s.stock?.includes(d.k) && s.coins[id] >= t.c && inv.length < MAXI) {
       s.coins[id] -= t.c; inv.push(d.k); s.log = `${this.name(id)} bought ${t.n}`; return this.push();

@@ -8,6 +8,7 @@ import { topDown, starfield } from './kit.js';
 const TAU = Math.PI * 2;
 // Set: a metal platform floating in deep space, edged with a glowing ring that shrinks with it. Stars, a ringed planet and drifting asteroids
 // surround it; anyone shoved off tumbles into the void.
+import { linger } from './util.js';
 export default {
   emotes: false, name: 'Shove Off', desc: 'Knock everyone off the shrinking platform! WASD to move, SPACE to dash.',
   create(ctx) {
@@ -38,6 +39,7 @@ export default {
     const ku = e => { held[e.code] = false; };
     addEventListener('keydown', kd); addEventListener('keyup', ku);
 
+    const lin = linger(2.2);
     function step(dt) {
       R = Math.max(3.2, 8 - time * .13);
       driveBots(ctx, st, dt, (id, s, sk) => {
@@ -86,11 +88,8 @@ export default {
         if (!host || over) return;
         if ((acc += dt) >= .05) { acc = 0; ctx.send(pack()); }
         const alive = ids.filter(id => st[id].alive);
-        if (alive.length <= (ids.length > 1 ? 1 : 0) || time > 70) {
-          over = true; ctx.send(pack());
-          alive.sort((a, b) => Math.hypot(st[a].x, st[a].z) - Math.hypot(st[b].x, st[b].z));
-          ctx.finish([...alive, ...out.reverse()]);
-        }
+        const fin = lin(alive.length <= (ids.length > 1 ? 1 : 0) || time > 70, dt, () => [...alive].sort((a, b) => Math.hypot(st[a].x, st[a].z) - Math.hypot(st[b].x, st[b].z)).concat(out.slice().reverse()));
+        if (fin) { over = true; ctx.send(pack()); ctx.finish(fin); }
       },
       onMessage(m, from) {
         if (host) {

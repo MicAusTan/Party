@@ -5,10 +5,13 @@ import { topDown } from './kit.js';
 // Color Floor: the floor is a grid of random colours. A colour flashes on screen - when the timer ends every other colour drops away.
 // Host simulates (arena); everyone renders the same snapshot. Shove is on, edges are deadly. Math.random only (host-side), never ctx.rng.
 const G = 5, S = 3.2, H = G * S / 2, COLS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6], NAMES = ['RED', 'BLUE', 'GREEN', 'YELLOW', 'PURPLE'], MAXR = 16;
+import { linger } from './util.js';
 export default {
   emotes: false, name: 'Color Floor', desc: 'A colour flashes on screen - run and stand on a tile of that colour before time runs out! Every other tile drops away. Falling = out. WASD to move, F / Shift / click to shove. Last one standing wins.',
+  tiers: [{ n: 'Small', m: .8, pen: 0, d: '5 x 5 board.' }, { n: 'Normal', m: 1, pen: 0, d: '7 x 7 board.', def: true }, { n: 'Large', m: 1.25, pen: 0, d: '9 x 9 board, good for big groups.' }],
   create(ctx) {
-    const W = ctx.world, A = arena(ctx, { shove: true, disc: false, radius: 8.6, set: { ...topDown(W, 12, 19), sky: 0x120a2a, fog: { color: 0x120a2a, near: 36, far: 85 }, light: 1, sun: { intensity: 1, pos: [4, 14, 8] } } }), { ids, st, S: SET } = A, host = ctx.isHost, fall = {}, was = {}, splashed = {}, tiles = [];
+    const G = [5, 7, 9][ctx.diff ?? 1], H = G * S / 2;
+    const W = ctx.world, A = arena(ctx, { shove: true, disc: false, radius: H + .6, set: { ...topDown(W, 12 * G / 5, 19 * G / 5), sky: 0x120a2a, fog: { color: 0x120a2a, near: 36, far: 85 }, light: 1, sun: { intensity: 1, pos: [4, 14, 8] } } }), { ids, st, S: SET } = A, host = ctx.isHost, fall = {}, was = {}, splashed = {}, tiles = [];
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
     SET.box(120, .5, 120, 0x0a0618, 0, -9, 0);
     for (let i = 0; i < G * G; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(S - .15, .4, S - .15), new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: true })); m.position.set(-H + S * (i % G + .5), -.2, -H + S * ((i / G | 0) + .5)); SET.root.add(m); tiles.push(m); }
@@ -18,6 +21,7 @@ export default {
     deal(); round = 1; T = 3.4; pt = T;
     const pack = () => ({ p: A.pack(), c: col.join(''), g: gone ? 1 : 0, tg: target, ph, tl: +Math.max(0, pt).toFixed(2), r: round });
     let snap = pack();
+    const lin = linger(2.2);
     function step(dt) {
       rt += dt;
       A.bots(dt, (id, s, sk) => {
@@ -30,7 +34,7 @@ export default {
       else if (ph === 'drop' && pt <= 0) { round++; deal(); gone = false; ph = 'show'; T = Math.max(1.25, 3.4 - round * .2); pt = T; rt = 0; for (const id of ids) delete st[id].dl; }
       if (ph === 'show') for (const id of ids) { const s = st[id]; if (s.alive && tileAt(s.x, s.z) < 0) { s.alive = false; out.push(id); } }   // shoved off the edge
       const al = ids.filter(id => st[id].alive);
-      if (al.length <= (ids.length > 1 ? 1 : 0) || round > MAXR) { over = true; ctx.send(pack()); ctx.finish([...al, ...out.reverse()]); }
+      { const o = lin(al.length <= (ids.length > 1 ? 1 : 0) || round > MAXR, dt, () => [...al, ...out.slice().reverse()]); if (o) { over = true; ctx.send(pack()); ctx.finish(o); } }
     }
     let prevPh = '', prevR = 0;
     return {

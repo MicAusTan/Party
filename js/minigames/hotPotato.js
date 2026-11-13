@@ -3,6 +3,7 @@ import { sfx } from '../sfx.js';
 import { arena } from './arena.js';
 import { topDown, pine, ringPts } from './kit.js';
 // Set: a night campsite. Braziers glow around the edge, tents and pines sit beyond them, fireflies drift over the clearing.
+import { linger } from './util.js';
 export default {
   name: 'Hot Potato', desc: 'Don\'t be holding the potato when it blows! Touch someone to pass it on. WASD to move.',
   create(ctx) {
@@ -20,7 +21,9 @@ export default {
     let holder = host ? ids[Math.random() * ids.length | 0] : null, fuse = 4 + Math.random() * 4, cool = 1, out = [], time = 0, acc = 0, over = false, lt = 0, prevH = null;
     const pack = () => ({ p: A.pack(), h: holder, f: +fuse.toFixed(1) });
     let snap = pack();
+    let endT = null, endOrder = null;
     function step(dt) {
+      if (endT !== null && (endT -= dt) <= 0) { over = true; snap = pack(); ctx.send(snap); return ctx.finish(endOrder); }
       time += dt; cool -= dt; fuse -= dt;
       A.bots(dt, (id, s, sk) => {
         const r = Math.hypot(s.x, s.z); let b = null, bd = 1e9;
@@ -37,7 +40,7 @@ export default {
       if (fuse <= 0) {
         st[holder].alive = false; out.push(holder);
         const al = ids.filter(id => st[id].alive);
-        if (al.length <= (ids.length > 1 ? 1 : 0)) { over = true; snap = pack(); ctx.send(snap); return ctx.finish([...al, ...out.reverse()]); }
+        if (al.length <= (ids.length > 1 ? 1 : 0)) { endT = 2.2; endOrder = [...al, ...out.slice().reverse()]; fuse = 999; cool = 999; return; }
         holder = al[Math.random() * al.length | 0]; fuse = (4 + Math.random() * 4) * [1.3, 1, .75][ctx.diff ?? 1]; cool = 1.2;
       }
       if (time > 90) { over = true; const al = ids.filter(id => st[id].alive); ctx.finish([...al, ...out.reverse()]); }

@@ -55,10 +55,11 @@ export function arena(ctx, { radius = 11.5, disc: withDisc = true, set, shove = 
     s.held = o;
   };
   const fire = () => { if (host) doShove(ctx.me); else ctx.send({ sh: 1 }); };
-  const kd2 = e => { if (shove && !e.repeat && (e.code === 'KeyF' || e.code === 'ShiftLeft' || e.code === 'ShiftRight')) fire(); if (grab && !e.repeat && e.code === 'KeyE') { if (host) setGrab(ctx.me, true); else ctx.send({ gr: 1 }); } };
-  const ku2 = e => { if (grab && e.code === 'KeyE') { if (host) setGrab(ctx.me, false); else ctx.send({ gr: 0 }); } };
-  const pd = e => { if (shove && e.button === 0 && !e.target.closest?.('button,input,select')) fire(); };
-  addEventListener('keydown', kd); addEventListener('keyup', ku); addEventListener('keydown', kd2); addEventListener('keyup', ku2); addEventListener('pointerdown', pd);
+  const kd2 = e => { if (shove && !e.repeat && (e.code === 'KeyF' || e.code === 'ShiftLeft' || e.code === 'ShiftRight')) fire(); if (grab && !e.repeat && (e.code === 'KeyE' || e.code === 'Space')) { if (host) setGrab(ctx.me, true); else ctx.send({ gr: 1 }); } };
+  const ku2 = e => { if (grab && (e.code === 'KeyE' || e.code === 'Space')) { if (host) setGrab(ctx.me, false); else ctx.send({ gr: 0 }); } };
+  const pd = e => { if (e.button !== 0 || e.target.closest?.('button,input,select')) return; if (shove) fire(); if (grab) { if (host) setGrab(ctx.me, true); else ctx.send({ gr: 1 }); } };
+  const pu = e => { if (grab && e.button === 0) { if (host) setGrab(ctx.me, false); else ctx.send({ gr: 0 }); } };
+  addEventListener('keydown', kd); addEventListener('keyup', ku); addEventListener('keydown', kd2); addEventListener('keyup', ku2); addEventListener('pointerdown', pd); addEventListener('pointerup', pu);
   const links = {}, hands = {}, punch = {}, prevL = {}, holdOf = {}; let prevHit = {};
   const stopHands = W.addFrame(dt => {           // hands: a punch when you shove, a hand on the player you grip
     for (const id of ids) {
@@ -121,7 +122,7 @@ export function arena(ctx, { radius = 11.5, disc: withDisc = true, set, shove = 
     },
     cleanup() {
       stopHands(); Object.values(hands).forEach(m => { W.scene.remove(m); });
-      removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('keydown', kd2); removeEventListener('keyup', ku2); removeEventListener('pointerdown', pd); Object.values(links).forEach(m => { W.scene.remove(m); m.geometry.dispose(); m.material.dispose(); }); if (S) S.cleanup(); else { W.scene.remove(disc); W.showDeco(true); }
+      removeEventListener('keydown', kd); removeEventListener('keyup', ku); removeEventListener('keydown', kd2); removeEventListener('keyup', ku2); removeEventListener('pointerdown', pd); removeEventListener('pointerup', pu); Object.values(links).forEach(m => { W.scene.remove(m); m.geometry.dispose(); m.material.dispose(); }); if (S) S.cleanup(); else { W.scene.remove(disc); W.showDeco(true); }
       ids.forEach(id => { const g = W.m.get(id)?.g; if (g) g.visible = true; });
     },
   };

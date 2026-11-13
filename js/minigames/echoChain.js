@@ -32,7 +32,7 @@ export default {
     const seq = Array.from({ length: LMAX + 2 }, () => Math.random() * NC | 0);
     let ph = 'pause', t = 1.6, L = L0, k = 0, gap = true, lit = -1, litK = -1, idx = 0, lives = LIVES, best = 0, time = 0, acc = 0, over = false, rk = null, evN = 0, evs = [], seenEv = 0, ended = false, seenLit = -2, seenTurn = '', botT = 0, stepT = STEP_T;
     const ev = (kk, pad, id) => { evs.push({ n: ++evN, k: kk, pad, id }); if (evs.length > 12) evs.shift(); };
-    const pack = () => ({ ph, L, idx, lit, lk: litK, lives, best, st: +Math.max(0, stepT).toFixed(1), ev: evs, o: rk });
+    const pack = () => ({ ph, L, idx, lit, lk: litK, lives, best, st: +Math.max(0, stepT).toFixed(1), ev: evs, o: rk, h: ph === 'in' && L <= 4 ? seq[idx] : -1 });
     let snap = pack();
     const finish = () => {
       if (over) return; over = true; ph = 'end'; rk = best >= TIER[0] ? 0 : best >= TIER[1] ? 1 : best >= TIER[2] ? 2 : 3;
@@ -82,10 +82,11 @@ export default {
         if (turn !== seenTurn) { seenTurn = turn; if (turn) W.popIcon(turn, '👉'); }
         ids.forEach(id => plates[id].set(id === turn ? '▶ YOUR STEP' : ''));
         if (snap.o != null && !ended) { ended = true; ids.forEach(id => W.emote(id, snap.o < 3 ? 'cheer' : 'sad')); sfx(snap.o < 3 ? 'win' : 'lose'); }
-        const tiles = COLS.map((c, i) => `<div class="tile" data-i="${i}" style="display:inline-block;margin:3px;padding:10px 16px;border-radius:10px;background:${CSS[i]};color:#111;font-weight:800">${i + 1}</div>`).join('');
+        const hint = turn === me ? snap.h : -1, tiles = COLS.map((c, i) => `<div class="tile" data-i="${i}" style="display:inline-block;margin:2px;padding:4px 12px;min-width:0;width:auto;height:auto;font-size:14px;line-height:1.2;border-radius:8px;background:${CSS[i]};color:#111;font-weight:800;${i === hint ? 'outline:4px solid #fff;box-shadow:0 0 14px #fff' : ''}">${i + 1}${i === hint ? '<div style="font-size:10px">HERE</div>' : ''}</div>`).join('');
+        const cc = c => typeof c === 'number' ? '#' + c.toString(16).padStart(6, '0') : c, dots = Array.from({ length: snap.L }, (_, q) => { const oc = cc(ctx.players[owner(q)]?.color || '#888'), done = snap.ph === 'in' ? q < snap.idx : snap.ph === 'show' ? q < snap.lk : false, now = snap.ph === 'in' ? q === snap.idx : snap.ph === 'show' && q === snap.lk, mine = owner(q) === me; return `<span style="display:inline-block;width:${now ? 22 : 16}px;height:${now ? 22 : 16}px;margin:2px;border-radius:50%;background:${done || now ? oc : 'transparent'};border:3px solid ${oc};opacity:${done || now ? 1 : .55};vertical-align:middle;${mine ? 'box-shadow:0 0 0 2px #fff' : ''}"></span>`; }).join(''), legend = `<div style="font-size:11px;opacity:.8;max-width:340px;margin:2px auto">${snap.L <= 5 ? 'Each dot = one step, coloured by who presses it. White-ringed dots are YOURS: remember which pad lights up for them.' : ''}${hint >= 0 ? ' Your pad is marked while the pattern is short.' : ''}</div>`;
         const lo = snap.lk >= 0 ? owner(snap.lk) : null, status = snap.ph === 'show' ? (lo ? (lo === me ? `⭐ MEMORIZE - step ${snap.lk + 1}/${snap.L} is YOURS: ${CNAME[snap.lit] ?? ''}` : `Step ${snap.lk + 1}/${snap.L} belongs to ${ctx.esc(ctx.players[lo]?.name ?? '')}`) : 'Watch the pattern...') : snap.ph === 'in' ? (turn === me ? `YOUR STEP (${snap.idx + 1}/${snap.L}) - ${snap.st}s` : `${ctx.esc(ctx.players[turn]?.name ?? '')}'s step (${snap.idx + 1}/${snap.L})`) : snap.ph === 'pause' ? 'Get ready...' : '';
         el.innerHTML = snap.o != null ? `<h2>${snap.o < 3 ? '🏆 ' : ''}${NAMES[snap.o]}!</h2><div>Longest pattern cleared: ${snap.best}</div>`
-          : `<h3>${status}</h3><div>${tiles}</div><div>Pattern ${snap.L} &nbsp; ${'❤'.repeat(Math.max(0, snap.lives))}${'🖤'.repeat(Math.max(0, LIVES - snap.lives))} &nbsp; Best ${snap.best || '-'}</div>`;
+          : `<h3>${status}</h3><div>${dots}</div><div>${tiles}</div>${legend}<div>Pattern ${snap.L} &nbsp; ${'❤'.repeat(Math.max(0, snap.lives))}${'🖤'.repeat(Math.max(0, LIVES - snap.lives))} &nbsp; Best ${snap.best || '-'}</div>`;
       },
       onMessage(m, from) {
         if (host) { if (m.k != null && ids.includes(from)) press(from, (m.k | 0) % NC); }

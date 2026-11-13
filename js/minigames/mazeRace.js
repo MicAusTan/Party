@@ -6,7 +6,7 @@ import { stage, fitDist } from './stage.js';
 // Set: a hedge maze seen from above. Everyone's avatar is in the maze for real; positions are shared a few times a second.
 const CS = 2, WT = .4, WH = 1.15;
 export default {
-  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '12x12 maze.', def: true }, { n: 'Large', m: 1.4, pen: 1, d: '18x18 maze, longer clock.' }, { n: 'Huge', m: 2, pen: 2, d: '26x26 maze, much longer clock.' }],
+  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '12x12 maze.', def: true }, { n: 'Large', m: 1.5, pen: 1, d: '18x18 maze, longer clock.' }, { n: 'Huge', m: 2, pen: 2, d: '26x26 maze, much longer clock.' }],
   name: 'Maze Race', desc: 'Reach the green square first! WASD / arrows to move through the maze. Everyone has the same maze.',
   create(ctx) {
     const D = ctx.diff ?? 0, N = [12, 18, 26][D], DIRS = { KeyW: ['n', -N], ArrowUp: ['n', -N], KeyS: ['s', N], ArrowDown: ['s', N], KeyD: ['e', 1], ArrowRight: ['e', 1], KeyA: ['w', -1], ArrowLeft: ['w', -1] };
@@ -28,7 +28,9 @@ export default {
     const cell = {}, off = {}, fin = {}; ids.forEach((id, i) => { cell[id] = 0; const a = i / ids.length * Math.PI * 2; off[id] = [Math.cos(a) * .42, Math.sin(a) * .42]; });
 
     // ---------- the set ----------
-    const dist = fitDist(W, N * CS / 2 + 2.5, 30);
+    const dist = fitDist(W, N * CS / 2 + 4.5, 30);
+    let zoom = 1, zt = 0; const wh = e => { zoom = Math.max(.45, Math.min(1.3, zoom * (e.deltaY > 0 ? 1.1 : .91))); }, zk = e => { if (e.code === 'Equal' || e.code === 'NumpadAdd') zoom = Math.max(.45, zoom * .9); if (e.code === 'Minus' || e.code === 'NumpadSubtract') zoom = Math.min(1.3, zoom * 1.1); };
+    addEventListener('wheel', wh, { passive: true }); addEventListener('keydown', zk);
     const S = stage(ctx, { light: 1.15, sun: { intensity: 1.2, pos: [-8, 20, 10] }, cam: { pos: [0, dist * .96, dist * .28], look: [0, 0, .6] }, camFrom: [0, dist * 1.4, dist * .5], camT: 1.4 });
     S.box(120, .3, 120, 0x4f9a45, 0, -.6, 0); S.box(N * CS + 1.2, .3, N * CS + 1.2, 0xe8dcb0, 0, -.3, 0);   // lawn + sandy paths
     const segs = [];
@@ -47,6 +49,7 @@ export default {
     const ring = S.cyl(.6, .6, .05, ctx.players[me]?.color || '#f1c40f', 0, 0, 0, { basic: true, op: .8, seg: 20 });   // "this is you" ring
     ids.forEach(id => { W.put(id, cx(0) + off[id][0], cz(0) + off[id][1], 0); const e = W.m.get(id); if (e) e.g.scale.setScalar(.62); });
     S.anim(dt => {
+      if ((zt += dt) > 1.6) W.setCam([0, dist * .96 * zoom, dist * .28 * zoom], [0, 0, .6]);
       tt += dt;
       for (const id of ids) { const e = W.m.get(id); if (!e) continue; if (ctx.players[id]?.bot) cell[id] = route[Math.min(route.length - 1, Math.round(sb.get(id) * (route.length - 1)))]; W.set(id, cx(cell[id]) + off[id][0], cz(cell[id]) + off[id][1]); }
       const m = W.m.get(me); if (m) ring.position.set(m.g.position.x, .04, m.g.position.z);
@@ -60,14 +63,14 @@ export default {
     const emit = ev => { ev.id = me; ctx.send(ev); };
     const key = e => {
       const d = DIRS[e.code]; if (!d || done) return; e.preventDefault();
-      if (!g[pos][d[0]]) { pos += d[1]; cell[me] = pos; sfx('click'); if (pos === GOAL) { done = true; sb.report(Math.round(time * 1000)); emit({ k: 'm', p: pos, done: 1 }); sentPos = pos; cheer(me); } }
+      if (!g[pos][d[0]]) { pos += d[1]; cell[me] = pos; sfx('click'); if (pos === GOAL) { sfx('ding'); done = true; sb.report(Math.round(time * 1000)); emit({ k: 'm', p: pos, done: 1 }); sentPos = pos; cheer(me); } }
     };
     addEventListener('keydown', key);
     return {
       update(dt) {
         if (!done) time += dt; sb.prog(pos / GOAL), sb.tick(dt);
         if (pos !== sentPos && (sendT -= dt) <= 0) { sendT = .1; sentPos = pos; emit({ k: 'm', p: pos }); }   // throttled: at most ~10 messages/s even when holding a key
-        tl.textContent = done ? `Done in ${time.toFixed(1)}s - waiting for others...` : time.toFixed(1) + 's';
+        tl.textContent = done ? `Done in ${time.toFixed(1)}s - waiting for others...` : time.toFixed(1) + 's  (zoom: mouse wheel or + / -)';
       },
       endNow() { sb.endNow(); },
       onMessage(m, from) {
@@ -78,7 +81,7 @@ export default {
         }
         sb.onMessage(m, from);
       },
-      cleanup() { removeEventListener('keydown', key); el.remove(); ids.forEach(id => W.m.get(id)?.g.scale.setScalar(1)); S.cleanup(); },
+      cleanup() { removeEventListener('keydown', key); removeEventListener('wheel', wh); removeEventListener('keydown', zk); el.remove(); ids.forEach(id => W.m.get(id)?.g.scale.setScalar(1)); S.cleanup(); },
     };
   },
 };

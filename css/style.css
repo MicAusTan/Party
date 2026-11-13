@@ -8,7 +8,7 @@ input,button{padding:8px;border-radius:6px;border:0;font:inherit}
 button{background:#f1c40f;cursor:pointer;font-weight:700}
 h1{margin:0;font-size:22px;text-align:center}
 #hud{position:fixed;top:8px;left:0;right:0;padding:0 270px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;text-align:center;pointer-events:none}
-.mg{background:#000a;padding:10px 18px;border-radius:12px;min-width:min(300px,100%);max-width:100%;box-sizing:border-box;max-height:42vh;overflow:hidden}
+.mg{background:#000a;padding:10px 18px;border-radius:12px;min-width:min(300px,100%);max-width:100%;box-sizing:border-box;max-height:46vh;overflow-y:auto}
 .mg h2{margin:0 0 6px;font-size:26px}
 .bar{position:relative;height:22px;margin:4px 0;background:#fff3;border-radius:6px;overflow:hidden;text-align:left}
 .bar span{position:absolute;inset:0 auto 0 0}.bar b{position:relative;padding:0 8px;line-height:22px}
@@ -113,10 +113,11 @@ select{padding:4px;border-radius:6px;border:0;font:inherit}
 .duelbox{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin:8px 0;padding:10px;background:#0006;border-radius:10px;text-align:center}
 .duelbox>div{display:flex;flex-direction:column;align-items:center;gap:4px}.duelbox .die{font-size:44px;line-height:1}.duelbox .die.roll{animation:dieroll .25s linear infinite}.duelbox .dres{flex-basis:100%;font-size:16px;font-weight:700;color:#ffd93d}
 @keyframes dieroll{0%{transform:rotate(0)}100%{transform:rotate(360deg)}}
-#hud.off{display:none}.mg{max-height:34vh}
+#hud.off{display:none}.mg{max-height:46vh}
 .pal{position:absolute;top:8px;right:8px;width:38px;height:38px;border-radius:50%;padding:0;display:flex;align-items:center;justify-content:center;background:#ffffff1f;color:#fff}.pal:hover{background:#ffffff38}
 #summary{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(380px,94vw);max-height:88vh;overflow-y:auto;z-index:30;gap:6px;background:linear-gradient(160deg,#16103a,#0b0820);border:1px solid #ffffff2a}
 #summary h2{margin:0 0 4px;text-align:center}#summary .srow{display:flex;justify-content:space-between;font-size:15px;padding:2px 0;border-bottom:1px solid #ffffff10}#summary .srow.big{font-size:18px;color:#ffd93d}#summary .lbl{margin-top:8px;opacity:.7;text-transform:uppercase;font-size:11px;letter-spacing:1px}
 #summary .pri{margin-top:10px;background:#ffd93d;color:#1b1340;padding:8px;border-radius:8px}
-.mg:has(.bar):not(:has(button)){position:fixed;left:12px;top:50%;transform:translateY(-50%);min-width:150px;max-width:210px;text-align:left;padding:8px 12px;z-index:3}.mg:has(.bar):not(:has(button)) h2{font-size:20px;margin:0 0 4px}
+.mg:has(.bar):not(:has(button)){position:fixed;right:12px;top:50%;transform:translateY(-50%);min-width:150px;max-width:210px;text-align:left;padding:8px 12px;z-index:3}.mg:has(.bar):not(:has(button)) h2{font-size:20px;margin:0 0 4px}
 .card.sel{outline:2px solid #ffd93d}
+.chk{display:flex;gap:6px;align-items:center;font-size:12px;opacity:.8}

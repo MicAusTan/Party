@@ -9,7 +9,7 @@ const COLS = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6, 0xe67e22, 0x1abc
 const TOTAL = 44, Z0 = .72, Z1 = .98, BX = 10, TIER = [.85, .65, .4], NAMES = ['GOLD', 'SILVER', 'BRONZE', 'Too many dropped'];
 export default {
   coop: true,
-  tiers: [{ n: 'Normal', m: 1, pen: 0, def: true }, { n: 'Hard', m: 1.3, pen: 0, d: 'One more colour, faster belt and parcels.' }, { n: 'Insane', m: 1.7, pen: 0, d: 'Two more colours, much faster.' }],
+  tiers: [{ n: 'Normal', m: 1, pen: 0, def: true }, { n: 'Hard', m: 1.5, pen: 0, d: 'One more colour, faster belt and parcels.' }, { n: 'Insane', m: 2, pen: 0, d: 'Two more colours, much faster.' }],
   name: 'Parcel Panic', desc: 'CO-OP! Every player owns some parcel colours (see the HUD). When a parcel of YOUR colour reaches the green zone, press its number key (1-8) or tap its tile! Mistimed presses jam your hands.',
   create(ctx) {
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, host = ctx.isHost, me = ctx.me, D = ctx.diff ?? 0, C = Math.min(8, (n <= 2 ? 4 : n === 3 ? 6 : Math.min(8, n)) + D);

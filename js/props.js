@@ -58,3 +58,13 @@ export const GAITS = {
   tiptoe: (s, t, mv) => { s.sy = 1.12; s.sx = s.sz = .94; if (mv) { s.y = .08 + Math.abs(Math.sin(t * 12)) * .04; s.rx = -.08; } },
   jelly: (s, t, mv) => { if (mv) { const k = Math.sin(t * 14); s.sx = s.sz = 1 - .15 * k; s.sy = 1 + .3 * k; s.y = Math.abs(Math.sin(t * 7)) * .15; } },
 };
+
+// Hold poses: your character stays in the pose (sleeping, playing dead, dancing...) until you move. fn(state, time, dt); fx = particle kind spawned at the head every `rate` s (trail = a trail shape, otherwise a pet/aura particle).
+export const HOLDS = {
+  sleep: { fn: (s, t) => { const k = Math.min(1, t * 2.5); s.rz = k * Math.PI / 2; s.y = k * .42; s.sy = 1 + Math.sin(t * 2) * .02 * k; }, fx: 'zzz', trail: 1, rate: .9, head: 1.4 },
+  drowse: { fn: (s, t) => { const k = Math.min(1, t * 2), n = Math.sin(t * 1.3); s.rx = k * (.22 + .12 * Math.max(0, n)); s.rz = Math.sin(t * .9) * .08 * k; s.sy = 1 - .04 * k; }, fx: 'zzz', trail: 1, rate: 1.3, head: 1.7 },
+  dead: { fn: (s, t) => { const k = Math.min(1, t * 4); s.rx = k * 1.5; s.y = k * .38; }, fx: 'smoke', trail: 1, rate: .6, head: 1.3 },
+  dance: { fn: (s, t, dt) => { s.y = Math.abs(Math.sin(t * 5)) * .25; s.rz = Math.sin(t * 5) * .18; s.sy = 1 + Math.sin(t * 10) * .05; s.dry = dt * 3.5; }, fx: 'notes', trail: 1, rate: .25, head: 1.9 },
+  sulk: { fn: (s, t) => { const k = Math.min(1, t * 2); s.rx = .45 * k; s.sy = 1 - .15 * k; s.sx = s.sz = 1 + .05 * k; s.rz = Math.sin(t * 1.5) * .03; }, fx: 'rain', rate: .07, head: 1.5 },
+  clap: { fn: (s, t) => { const q = Math.abs(Math.sin(t * 9)); s.sx = 1 + q * .08; s.y = q * .05; }, fx: 'sparkle', trail: 1, rate: .3, head: 1.6 },
+};

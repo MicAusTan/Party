@@ -6,20 +6,20 @@ export const EMOTES = [
   { n: 'Hello', ch: '👋', pose: 'wiggle' },
   { n: 'Haha', ch: '😂', pose: 'giggle' },
   { n: 'Party', ch: '🎉', pose: 'cheer', burst: '#ffd93d' },
-  { n: 'Sad', ch: '😢', pose: 'sad' },
+  { n: 'Sad', ch: '😢', hp: 'sulk' },
   { n: 'Grr', ch: '😡', pose: 'shake' },
   { n: 'Hmm', ch: '🤔', pose: 'tilt' },
   { n: 'Love', ch: '❤️', pose: 'love', burst: '#ff6b9d' },
   { n: 'Cool', ch: '😎', pose: 'cool' },
   { n: 'GG', ch: '🤝', pose: 'wiggle', price: 25 },
-  { n: 'Clap', ch: '👏', pose: 'cheer', price: 25 },
+  { n: 'Clap', ch: '👏', hp: 'clap', price: 25 },
   { n: 'Fire', ch: '🔥', burst: '#ff6a00', price: 40 },
   { n: 'Shock', ch: '😱', pose: 'shake', price: 30 },
-  { n: 'Sleepy', ch: '😴', pose: 'sad', price: 30 },
+  { n: 'Sleepy', ch: '😴', hp: 'drowse', price: 30 },
   { n: 'Wink', ch: '😉', pose: 'tilt', price: 30 },
-  { n: 'Dance', ch: '🕺', pose: 'cheer', burst: '#b28dff', price: 50 },
+  { n: 'Dance', ch: '🕺', hp: 'dance', burst: '#b28dff', price: 50 },
   { n: 'Star', ch: '⭐', burst: '#ffd93d', price: 40 },
-  { n: 'Skull', ch: '💀', pose: 'sad', price: 45 },
+  { n: 'Skull', ch: '💀', hp: 'dead', price: 45 },
   { n: 'Ghost', ch: '👻', pose: 'wiggle', burst: '#cfd8ff', price: 45 },
   { n: 'Rocket', ch: '🚀', pose: 'cheer', burst: '#4dd0e1', price: 50 },
   { n: 'Pizza', ch: '🍕', hold: true, prop: 'pizza', price: 35 },
@@ -54,7 +54,7 @@ export const EMOTES = [
   { n: 'Coffee', ch: '☕', hold: true, prop: 'coffee', price: 30 },
   { n: 'Gamer', ch: '🎮', pose: 'wiggle', price: 40 },
   { n: 'Lucky', ch: '🍀', pose: 'love', burst: '#7cf08a', price: 40 },
-  { n: 'Zzz', ch: '💤', pose: 'sad', price: 30 },
+  { n: 'Zzz', ch: '💤', hp: 'sleep', price: 30 },
   { n: 'Meow', ch: '🐱', pose: 'tilt', price: 35 },
   { n: 'Woof', ch: '🐶', pose: 'wiggle', price: 35 },
   { n: 'Bullseye', ch: '🎯', pose: 'cool', burst: '#ff4d6d', price: 45 },
@@ -90,10 +90,12 @@ export const EMOTES = [
 // extra particle effects for the plain pose emotes: name -> [particle kind, amount]
 const FXMAP = { Party: ['confetti', 16], Sad: ['rain', 12], Grr: ['embers', 10], Love: ['hearts', 12], Cool: ['sparkles', 10], Fire: ['flames', 14], Sleepy: ['mist', 8], Shock: ['electric', 10], Star: ['stardust', 14], Ghost: ['mist', 12], Rocket: ['embers', 14], Money: ['stardust', 12], Brain: ['electric', 10], Dance: ['confetti', 14], Clap: ['sparkles', 10], Lucky: ['petals', 10], Cake: ['confetti', 12], Brr: ['snow', 10], Zzz: ['mist', 8], Winner: ['stardust', 16], Diamond: ['sparkles', 12], Flex: ['embers', 8], 'Party face': ['confetti', 14], Bawl: ['rain', 10], Unicorn: ['sparkles', 12], Rainbow: ['confetti', 12], Zap: ['electric', 12], Splash: ['bubbles', 12], 'Mind blown': ['electric', 14] };
 EMOTES.forEach(e => { const f = FXMAP[e.n]; if (f) { e.fx = f[0]; e.fxn = f[1]; } });
-export const emoteTag = e => e.gait ? 'Move style' : e.hold ? 'Hold' : '';
+export const emoteTag = e => e.gait ? 'Move style' : e.hold || e.hp ? 'Hold' : '';
 export function playEmote(world, id, i, mine) {
+  if (i === -1) { world.stopAll(id); return; }          // the wheel's Stop button
   const e = EMOTES[i], g = world.m.get(id)?.g; if (!e || !g) return;
-  if (e.gait) world.setGait(id, e.gait, e.prop); else if (e.hold) world.hold(id, e.prop);
+  if (e.gait) world.setGait(id, e.gait, e.prop);
+  else { const ent = world.m.get(id); if (ent?.gait) world.stopGait(ent); if (e.hold) world.hold(id, e.prop); else if (e.hp) world.holdPose(id, e.hp); }      // any other emote cancels a move style
   if (e.pose) world.emote(id, e.pose);
   world.popIcon(id, e.ch);
   if (e.fx) world.fxMany(id, e.fx, e.fxn || 10);

@@ -21,17 +21,17 @@ export default {
     const el = document.createElement('div'); el.className = 'mg'; ctx.hud.append(el);
     const score = {}; ids.forEach(id => score[id] = 0);
     let coins = [], time = 25, spawnT = 0, acc = 0, prevMine = 0, over = false, snap = { p: {}, c: [], s: score, t: 25 };
-    const pack = () => { return { p: A.pack(), c: coins.map(c => [+c.x.toFixed(2), +c.z.toFixed(2), c.v]), s: score, t: +time.toFixed(1) }; };
+    const pack = () => { return { p: A.pack(), c: coins.map(c => [+c.x.toFixed(2), +c.z.toFixed(2), c.v, c.tm]), s: score, t: +time.toFixed(1) }; };
     function step(dt) {
       coins.forEach(c => c.age += dt);
       A.bots(dt, (id, s, sk) => {                                         // each bot has its own reaction time: it only notices a coin once it is that old
         const rx = s.react ??= (.05 + Math.random() * 1.1) * (1.3 - sk); let best = null, bd = 1e9;
-        for (const c of coins) { if (c.age < rx) continue; const d = Math.hypot(c.x - s.x, c.z - s.z) - (c.v > 1 ? 2 + 4 * sk : 0); if (d < bd) { bd = d; best = c; } }
+        for (const c of coins) { if (c.age < rx) continue; const d = Math.hypot(c.x - s.x, c.z - s.z) - (c.v > 1 ? 2 + 4 * sk : 0) - (c.tm >= 0 && c.tm === ctx.team(id) ? 1.5 : 0); if (d < bd) { bd = d; best = c; } }
         return best ? [best.x - s.x, best.z - s.z] : [-s.x * .3, -s.z * .3];
       });
       A.move(dt);
-      if ((spawnT -= dt) <= 0 && coins.length < Math.round(8 * K * K)) { spawnT = .35 / K; const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * 10.5 * K; coins.push({ x: Math.sin(a) * r, z: Math.cos(a) * r, v: Math.random() < .15 ? 3 : 1, age: 0 }); }
-      coins = coins.filter(c => { for (const id of ids) if (Math.hypot(st[id].x - c.x, st[id].z - c.z) < 1.2) { score[id] += c.v; return false; } return true; });
+      if ((spawnT -= dt) <= 0 && coins.length < Math.round(8 * K * K)) { spawnT = .35 / K; const a = Math.random() * TAU, r = Math.sqrt(Math.random()) * 10.5 * K; const gold = Math.random() < .15; coins.push({ x: Math.sin(a) * r, z: Math.cos(a) * r, v: gold ? 3 : 1, tm: ctx.team && !gold ? Math.random() * ctx.teamCount | 0 : -1, age: 0 }); }
+      coins = coins.filter(c => { for (const id of ids) if (Math.hypot(st[id].x - c.x, st[id].z - c.z) < 1.2) { score[id] += c.tm >= 0 ? (c.tm === ctx.team(id) ? 2 : 1) : c.v; return false; } return true; });
       if ((time -= dt) <= 0) { over = true; snap = pack(); ctx.send(snap); ctx.finish([...ids].sort((a, b) => score[b] - score[a])); }
     }
     return {
@@ -41,7 +41,7 @@ export default {
         while (cm.length < snap.c.length) { const m = new THREE.Mesh(new THREE.CylinderGeometry(.5, .5, .15, 8), new THREE.MeshStandardMaterial({ flatShading: true })); m.rotation.x = Math.PI / 2; const g = new THREE.Group(); g.add(m); S.root.add(g); cm.push(g); }
         cm.forEach((g, i) => {
           const c = snap.c[i]; g.visible = !!c; if (!c) return;
-          g.position.set(c[0], .8, c[1]); g.rotation.y += dt * 4; g.scale.setScalar(c[2] > 1 ? 1.5 : 1); g.children[0].material.color.set(c[2] > 1 ? 0xff9f1a : 0xffd93d);
+          g.position.set(c[0], .8, c[1]); g.rotation.y += dt * 4; g.scale.setScalar(c[2] > 1 ? 1.5 : 1); g.children[0].material.color.set(c[2] > 1 ? 0xff9f1a : c[3] >= 0 ? [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f][c[3]] : 0xffd93d);
         });
         if (snap.s[ctx.me] > prevMine) sfx('coin'); prevMine = snap.s[ctx.me];
         el.innerHTML = `<h2>${Math.max(0, Math.ceil(snap.t))}</h2>` + ids.map(id => `<div class="bar"><span style="width:${Math.min(100, snap.s[id] * 3)}%;background:${ctx.players[id].color}"></span><b>${ctx.esc(ctx.players[id].name)} 🪙${snap.s[id]}</b></div>`).join('');

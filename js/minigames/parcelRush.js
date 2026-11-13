@@ -7,7 +7,7 @@ import { stage } from './stage.js';
 // green zone = +1 (+ streak bonus); pressing a colour that isn't there = -1 and jams your hands for a moment.
 const COLS7 = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f, 0x9b59b6, 0xe67e22, 0x1abc9c], CSS7 = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#e67e22', '#1abc9c'], DUR = 30, Z0 = .7, Z1 = .97, BX = 10;
 export default {
-  tiers: [{ n: 'Easy', m: .8, pen: 0, d: '2 colours.' }, { n: 'Normal', m: 1, pen: 0, d: '3 colours.', def: true }, { n: 'Hard', m: 1.4, pen: 1, d: '4 colours.' }],
+  tiers: [{ n: 'Easy', m: .8, pen: 0, d: '2 colours.' }, { n: 'Normal', m: 1, pen: 0, d: '3 colours.', def: true }, { n: 'Hard', m: 1.5, pen: 1, d: '4 colours.' }],
   emotes: false, name: 'Parcel Rush', desc: 'FREE FOR ALL! Parcels of 2-4 colours (set by the difficulty) ride your conveyor, faster and faster. When one reaches the green zone press its number key or tap its tile. Streaks score bonus points; wrong presses cost a point and jam your hands. 30 seconds.',
   create(ctx) {
     const D = ctx.diff ?? 1, C = [2, 3, 4][D], COLS = COLS7.slice(0, C), CSS = CSS7.slice(0, C), SPD = [1, 1.08, 1.16][D], GAP = [1, .94, .88][D];

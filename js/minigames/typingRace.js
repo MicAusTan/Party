@@ -44,7 +44,7 @@ const norm = s => s.trim().toLowerCase();   // forgiving: ignores caps and space
 // Set: a river boat race. Every finished word surges your boat toward the finish gate; typos rock it. Everyone's progress is shared live.
 const X0 = -13, X1 = 12.5;
 export default {
-  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '10 words. Enter on a wrong word = 2s.', def: true }, { n: 'Hard', m: 1.4, pen: 1, d: '14 words, harder ones. Any wrong letter is a typo (1.5s).' }, { n: 'Insane', m: 2, pen: 3, d: '18 words incl. expert ones. Any wrong letter = 2s.' }],
+  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '10 words. Enter on a wrong word = 2s.', def: true }, { n: 'Hard', m: 1.5, pen: 1, d: '14 words, harder ones. Any wrong letter is a typo (1.5s).' }, { n: 'Insane', m: 2, pen: 3, d: '18 words incl. expert ones. Any wrong letter = 2s.' }],
   emotes: false, name: 'Typing Race', desc: 'Type each word exactly - it advances automatically. Fastest wins. Press Enter on a wrong word for a time penalty (on Hard/Insane any wrong letter counts).',
   create(ctx) {
     const D = ctx.diff ?? 0, PEN = [2, 1.5, 2][D], STRICT = D > 0, MIX = [[3, 4, 3, 0], [2, 5, 5, 2], [1, 4, 7, 6]][D], NW = MIX.reduce((a, b) => a + b, 0);

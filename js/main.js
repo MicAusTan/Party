@@ -9,6 +9,7 @@ import { EMOTES, playEmote } from './emotes.js';
 import { gems as gemBal, onGems, addGems, claimDaily, gemsFor, sanitizeLook, owns } from './wallet.js';
 import { initWheel } from './wheel.js';
 import { initShop } from './shopui.js';
+import { Q } from './quality.js';
 import { showPodium } from './victory.js';
 import { COLORS, ACCENTS, OPTS, DEFAULT_LOOK, cleanLook, randomLook } from './look.js';
 
@@ -17,12 +18,12 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const net = new Net(), world = new World($('c'));
 const board = new Board({ net, world, esc, players: () => players, playMg: startRandomMg, onChange: () => lock(), fx: (t, a) => fx(t, a), onError: m => toast('⚠ ' + m + ' (please screenshot this!)', 8000) });
 let players = {}, me = null, mg = null, look = { ...DEFAULT_LOOK };
-const sim = {}, keys = {}; let cfg = { pets: true, mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false, team: true, botSkill: 'mixed', fill: 0, turnT: 30 };   // sim: host-only free-roam positions
+const sim = {}, keys = {}; let cfg = { norepeat: true, pets: true, mode: 'board', rounds: 8, off: [], board: 'grove', partyN: 10, repeats: false, team: true, botSkill: 'mixed', fill: 0, turnT: 30 };   // sim: host-only free-roam positions
 
 try { cfg = { ...cfg, ...JSON.parse(localStorage.getItem('pg-cfg') || '{}') }; } catch {}
 try { look = { ...look, ...JSON.parse(localStorage.getItem('pg-look') || '{}') }; $('name').value = localStorage.getItem('pg-name') || ''; } catch {}
 look = sanitizeLook(look);
-addEventListener('keydown', e => { if (document.getElementById('shop')?.hidden === false) return; keys[e.code] = true; if (e.code === 'KeyH' && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) $('hud').classList.toggle('off'); if (e.code === 'KeyP' && !e.repeat && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && emoOK() && players[me]?.pet && players[me].pet !== 'none') sendPet(); });
+addEventListener('keydown', e => { if (document.getElementById('shop')?.hidden === false) return; keys[e.code] = true; if (e.code === 'KeyH' && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) { const off = $('hud').classList.toggle('off'); toast(off ? 'Game UI hidden - press H to show it again' : 'Game UI shown', 1800); } if (e.code === 'KeyP' && !e.repeat && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && emoOK() && players[me]?.pet && players[me].pet !== 'none') sendPet(); });
 addEventListener('keyup', e => keys[e.code] = false);
 const myName = () => {
   const n = $('name').value.trim() || 'Player' + (Math.random() * 90 + 10 | 0);
@@ -35,7 +36,7 @@ const emoOK = () => { if (!me || document.getElementById('shop')?.hidden === fal
 const emoSync = () => wheel.sync();
 let emoAt = 0; const lastEmo = {};
 function relayEmote(id, i) {            // host: validate + rate-limit, play, tell everyone
-  i |= 0; if (!EMOTES[i] || !players[id]) return;
+  i |= 0; if ((i !== -1 && !EMOTES[i]) || !players[id]) return;
   const t = performance.now(); if (t - (lastEmo[id] || 0) < 400) return; lastEmo[id] = t;
   playEmote(world, id, i, id === me); net.broadcast('emote', { id, e: i });
 }
@@ -43,15 +44,15 @@ function sendEmote(i) {
   const t = performance.now(); if (t - emoAt < 600) return; emoAt = t;     // tiny cooldown, just a safety rail
   if (net.isHost) relayEmote(me, i); else { playEmote(world, me, i, true); net.send('emote', { e: i }); }
 }
-net.on('emote', (d, from) => { if (net.isHost) relayEmote(from, d.e); else if (d.id !== me && EMOTES[d.e | 0]) playEmote(world, d.id, d.e | 0, false); });
+net.on('emote', (d, from) => { if (net.isHost) relayEmote(from, d.e); else if (d.id !== me && (d.e === -1 || EMOTES[d.e | 0])) playEmote(world, d.id, d.e | 0, false); });
 
 // ---- victory podium (cosmetic; blocks free-roam movement while it's up)
 let podium = null;
 const endPodium = () => { podium?.end(); podium = null; };
 function podiumFor(order, ranks, o) { endPodium(); const me_ = podium = showPodium(world, players, order, ranks, { ...o, onEnd: () => { if (podium === me_) podium = null; } }); }
 // ---- gems + end-of-game summary ----
-let stats = null, wasLive = false;
-const resetStats = () => { stats = { pl: [0, 0, 0, 0], mgs: 0, gems: new Map() }; };
+let stats = null, wasLive = false; const playedKeys = new Set();
+const resetStats = () => { playedKeys.clear(); stats = { pl: [0, 0, 0, 0], mgs: 0, gems: new Map() }; };
 resetStats();
 const gain = (label, x) => { x = Math.round(x); if (x <= 0) return 0; addGems(x); stats.gems.set(label, (stats.gems.get(label) || 0) + x); return x; };
 const pf = n => Math.min(1.6, .7 + .1 * n);                                   // more players = bigger rewards
@@ -92,10 +93,25 @@ $('code').onkeydown = e => { if (e.key === 'Enter') $('join').click(); };
 $('room').onclick = () => navigator.clipboard?.writeText($('room').textContent).then(() => toast('Room code copied!'));
 const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
 let lookOpen = false, folded = false, party = null, partyState = null; const queued = [];   // party: host-only engine; partyState: what everyone renders
+const floatStop = document.createElement('button'); floatStop.textContent = '⏹ End minigame'; floatStop.hidden = true; floatStop.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:60;padding:5px 10px;font-size:12px;opacity:.7'; floatStop.className = 'ghost'; document.body.append(floatStop); floatStop.onclick = () => $('stopMg').onclick();
+let floatWant = false;
+function floatCheck() {
+  const b = $('stopMg'), r = b.getBoundingClientRect(), hudOff = false, seen = !b.hidden && r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth && getComputedStyle(b).visibility !== 'hidden';
+  floatStop.hidden = !(floatWant && !seen && !hudOff);
+}
+setInterval(floatCheck, 700);
+let helpEl = null, helpT = 0;
+function helpCard(def, ms) {
+  helpEl?.remove(); clearTimeout(helpT); if (!def || typeof document === 'undefined') return;
+  const el = document.createElement('div'); el.className = 'box'; el.style.cssText = 'right:10px;bottom:64px;z-index:55;width:220px;max-width:40vw;max-height:42vh;overflow-y:auto;text-align:left;padding:8px 12px;font-size:13px;cursor:pointer;pointer-events:auto';
+  el.innerHTML = `<b style="font-size:18px">${esc(def.name)} - how to play</b><div style="margin-top:4px">${esc(def.desc || '')}</div><small style="opacity:.6">click to close</small>`;
+  el.onclick = () => { el.remove(); helpEl = null; }; document.body.append(el); helpEl = el; helpT = setTimeout(() => { el.remove(); if (helpEl === el) helpEl = null; }, ms);
+}
+const helpBtn = document.createElement('button'); helpBtn.textContent = '? How to play'; helpBtn.hidden = true; helpBtn.className = 'ghost'; helpBtn.style.cssText = 'position:fixed;right:10px;top:10px;z-index:60;padding:5px 10px;font-size:12px;opacity:.7'; document.body.append(helpBtn); helpBtn.onclick = () => { if (mg) helpCard(MINIGAMES[mg.key], 10000); };
 function lock() {
   { const live = !!(board.active || partyState); if (live && !wasLive) resetStats(); wasLive = live; }
   const inMg = !!mg, inGame = board.active || !!partyState, lobby = !inMg && !inGame, host = net.isHost;
-  world.setPets(!inMg || petsOn());          // pets follow you in minigames too unless the host turned that off (laggy machines)
+  world.setPets((!inMg || petsOn()) && !Q.potato);          // pets follow you in minigames too unless the host turned that off (laggy machines)
   const n = Object.keys(players).length, need = practice ? 1 : 2;
   $('panel').classList.toggle('compact', !lobby); $('panel').classList.toggle('folded', folded);
   $('fold').textContent = folded ? '+' : '–';
@@ -105,7 +121,7 @@ function lock() {
   $('start').textContent = cfg.mode === 'party' ? '▶ Start minigame party' : '▶ Start board game'; $('start').disabled = n < need; $('startHint').hidden = !lobby || n >= need;
   $('startHint').textContent = `Waiting for players (${n}/${need} needed). Share the room code!`;
   $('leaveBtn').hidden = !(net.isHost || net.hostConn) || practice; $('botRow').hidden = !(host && lobby && !practice);
-  $('stopMg').hidden = !inMg; $('endGame').hidden = !(inGame && (!inMg || !!partyState)); renderParty();
+  floatWant = inMg && host; floatCheck(); helpBtn.hidden = !inMg; { const tb = document.querySelector('.tbar'); helpBtn.style.top = (tb ? Math.round(tb.getBoundingClientRect().bottom) + 6 : 10) + 'px'; } if (!inMg && helpEl) { helpEl.remove(); helpEl = null; } $('stopMg').hidden = !inMg; $('endGame').hidden = !(inGame && (!inMg || !!partyState)); renderParty();
   $('practice').hidden = !practice; $('testRow').hidden = !lobby; emoSync();
 }
 
@@ -143,6 +159,10 @@ function setLook(patch, temp) {
   if (net.isHost) { Object.assign(players.host, mkLook(look, 'host')); pushLobby(); }
   else net.send('cust', look);
 }
+Q.potato = localStorage.getItem('pg-potato') === '1';
+{ let last = performance.now(), acc = 0, n = 0, warned = false; const tick = now => { const dt = now - last; last = now; if (mg && !Q.potato && !warned && dt < 1000) { acc += dt; n++; if (acc >= 6000) { const fps = n / (acc / 1000); acc = 0; n = 0; if (fps < 24) { warned = true; toast('Low frame rate (' + Math.round(fps) + ' fps). Try Potato mode in the side panel for smoother play.', 5000); } } } else if (!mg) { acc = 0; n = 0; } requestAnimationFrame(tick); }; requestAnimationFrame(tick); }
+const applyPotato = () => { world.r.setPixelRatio?.(Q.potato ? .6 : 1); world.resize?.(); };
+document.querySelectorAll('.potato').forEach(c => { c.checked = Q.potato; c.onchange = () => { Q.potato = c.checked; try { localStorage.setItem('pg-potato', Q.potato ? '1' : '0'); } catch {} document.querySelectorAll('.potato').forEach(x => x.checked = Q.potato); applyPotato(); lock(); }; }); applyPotato();
 const shop = initShop({ cur: () => look, apply: p => setLook(p), toast, name: () => $('name').value.trim() || 'You' });
 $('shopBtn').onclick = $('shopBtn2').onclick = () => shop.open();
 const gemTxt = () => document.querySelectorAll('.gemchip').forEach(e => { if (!e.closest('#shop')) e.textContent = gemBal() + ' gems'; });
@@ -214,7 +234,7 @@ function enter(code) {
     $('settingsBtn').onclick = () => $('settings').hidden = false;
     $('settingsClose').onclick = () => $('settings').hidden = true;
     $('boardSel').innerHTML = Object.entries(BOARDS).map(([k, b]) => `<option value="${k}">${b.name}</option>`).join('') + '<option value="random">🎲 Random board</option>';
-    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; $('team').checked = cfg.team !== false; $('petsOn').checked = cfg.pets !== false; $('botSkill').value = cfg.botSkill; $('turnT').value = cfg.turnT; $('fill').value = cfg.fill; syncModeUI();
+    $('boardSel').value = cfg.board; $('modeSel').value = cfg.mode; $('partyN').value = cfg.partyN; $('repeats').checked = !!cfg.repeats; $('team').checked = cfg.team !== false; $('readyUp').checked = !!cfg.ready; $('petsOn').checked = cfg.pets !== false; $('norepeat').checked = cfg.norepeat !== false; $('botSkill').value = cfg.botSkill; $('turnT').value = cfg.turnT; $('fill').value = cfg.fill; syncModeUI();
     $('rounds').innerHTML = [[4, 10], [8, 20], [12, 30], [16, 40], [20, 50], [30, 75]].map(([n, m]) => `<option value="${n}">${n} rounds (~${m} min)</option>`).join(''); $('rounds').value = cfg.rounds;
     $('pool').innerHTML = Object.entries(MINIGAMES).map(([k, g]) => `<label><input type="checkbox" data-mg="${k}"${cfg.off.includes(k) ? '' : ' checked'}> ${esc(g.name)}</label>`).join('');
     $('settings').onchange = e => {
@@ -225,6 +245,8 @@ function enter(code) {
       else if (e.target.id === 'rounds') cfg.rounds = +e.target.value;
       else if (e.target.id === 'turnT') cfg.turnT = +e.target.value;
       else if (e.target.id === 'team') cfg.team = e.target.checked;
+      else if (e.target.id === 'norepeat') cfg.norepeat = e.target.checked;
+      else if (e.target.id === 'readyUp') cfg.ready = e.target.checked;
       else if (e.target.id === 'petsOn') { cfg.pets = e.target.checked; pushLobby(); }
       else if (e.target.id === 'botSkill') cfg.botSkill = e.target.value;
       else if (e.target.id === 'fill') cfg.fill = +e.target.value;
@@ -275,7 +297,7 @@ $('join').onclick = async () => {
 // ---- host-side lobby handling
 net.on('hello', (d, from) => {
   if (!net.isHost) return;
-  if (mg) { queued.push([from, d]); net.sendTo(from, 'queued'); return; }   // joins as soon as this minigame ends
+  if (mg) { queued.push([from, d]); net.sendTo(from, 'queued', { key: mg.key }); return; }   // joins as soon as this minigame ends
   admit(from, d);
 });
 function admit(from, d) {
@@ -289,10 +311,16 @@ const admitQueued = () => queued.splice(0).forEach(([f, d]) => net.conns.has(f) 
 net.on('cust', (d, from) => { const p = players[from]; if (p) { Object.assign(p, mkLook(d, from)); pushLobby(); } });
 net.on('leave', (_, from) => { const qi = queued.findIndex(q => q[0] === from); if (qi >= 0) queued.splice(qi, 1); delete players[from]; delete sim[from]; board.onLeave(from); pushLobby(); });
 net.on('input', (d, from) => { if (sim[from]) { sim[from].ix = +d.x || 0; sim[from].iz = +d.z || 0; } });
-net.on('queued', () => toast('A minigame is in progress — you\'ll join when it ends!', 4000));
+let waitEl = null;
+function hideWait() { waitEl?.remove(); waitEl = null; }
+net.on('queued', d => {
+  const def = MINIGAMES[d?.key]; toast('A minigame is in progress — you\'ll join when it ends!', 4000);
+  hideWait(); waitEl = document.createElement('div'); waitEl.className = 'box'; waitEl.style.cssText = 'top:18%;left:50%;transform:translateX(-50%);z-index:30;text-align:center;max-width:min(440px,92vw);pointer-events:none';
+  waitEl.innerHTML = `<small style="opacity:.7">Waiting for the next round</small><h2 style="margin:4px 0">${esc(def?.name || 'A minigame')} is being played</h2><div>${esc(def?.desc || '')}</div><small style="opacity:.7">You'll join automatically when it ends.</small>`; document.body.append(waitEl);
+});
 net.on('closed', () => alert('Host disconnected'));
 // ---- client-side
-net.on('lobby', d => setPlayers(d));
+net.on('lobby', d => { if (d && me && d[me]) hideWait(); setPlayers(d); });
 net.on('snap', d => { if (!net.isHost && !board.active && !mg && !podium) applySnap(world, d); });
 // ---- confirmation dialog (promise-based): `if (await ask('Title', 'Explain', 'Do it')) ...`
 function ask(title, text, yes = 'Yes') {
@@ -316,9 +344,9 @@ addEventListener('keydown', e => { if (e.code === 'KeyF' && !e.repeat && !/INPUT
 // ---- minigames
 function startRandomMg(key) {
   if (mg || voting || !net.isHost) return;
-  const ks = poolKeys(); key ||= ks[Math.random() * ks.length | 0];
+  const ks = poolKeys(); if (!key) { let cand = cfg.norepeat !== false ? ks.filter(k => !playedKeys.has(k)) : ks; if (!cand.length) { playedKeys.clear(); cand = ks; } key = cand[Math.random() * cand.length | 0]; } playedKeys.add(key);       // host option: no repeats until every game has been played once
   const seed = Math.random() * 2 ** 31 | 0, def = MINIGAMES[key];
-  if (!def?.tiers || typeof document === 'undefined' || !document.body?.append) { net.broadcast('mg:start', { key, seed, diff: 1 }); startMg(key, seed, 1); return; }
+  if (!def?.tiers || typeof document === 'undefined' || !document.body?.append) { launch(key, seed, 1); return; }
   // Games with `tiers` start with a table-wide vote: everyone plays the winning tier (ties: random). Humans only; no votes = tier 0.
   voting = { key, seed, votes: {} }; net.broadcast('mg:vote', { key }); showVote(key);
   const mine = voting; setTimeout(() => { if (voting === mine) resolveVote(); }, 9000);
@@ -340,8 +368,28 @@ function castVote(id, i) {
 function resolveVote() {
   const v = voting; if (!v) return; voting = null; hideVote(); const n = MINIGAMES[v.key].tiers.length, c = Array(n).fill(0);
   Object.values(v.votes).forEach(i => c[i]++); const top = Math.max(...c), tied = c.map((x, i) => x === top ? i : -1).filter(i => i >= 0), tier = top ? tied[Math.random() * tied.length | 0] : Math.max(0, MINIGAMES[v.key].tiers.findIndex(t => t.def));
-  net.broadcast('mg:start', { key: v.key, seed: v.seed, diff: tier }); startMg(v.key, v.seed, tier);
+  launch(v.key, v.seed, tier);
 }
+let gate = null, gateEl = null;
+function hideGate() { gateEl?.remove(); gateEl = null; gate = null; }
+function go(key, seed, diff) { hideGate(); net.broadcast('mg:start', { key, seed, diff }); startMg(key, seed, diff); }
+function launch(key, seed, diff) {
+  if (!cfg.ready || typeof document === 'undefined' || !document.body?.append) { go(key, seed, diff); return; }
+  gate = { key, seed, diff, ok: {} }; net.broadcast('mg:ready', { key, diff }); showGate(key, diff); gateUpdate();
+}
+function showGate(key, diff) {
+  hideGate(); const def = MINIGAMES[key]; if (!def) return; const el = document.createElement('div'); el.className = 'box'; el.style.cssText = 'top:50%;left:50%;transform:translate(-50%,-50%);z-index:20;text-align:center;max-width:92vw;align-items:center';
+  el.innerHTML = `<h2 style="margin:0">${esc(def.name)}</h2><div style="max-width:420px">${esc(def.desc || '')}</div><div id="rdyList"></div><button id="rdyBtn" style="padding:10px 24px;font-size:18px">✔ Ready</button>${net.isHost ? '<button id="rdyGo" class="ghost">Start anyway</button>' : ''}`;
+  el.onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.id === 'rdyBtn') { b.disabled = true; b.textContent = 'Waiting for others...'; if (net.isHost) { gate && (gate.ok[me] = 1, gateUpdate()); } else net.send('mg:rdy', {}); } else if (b.id === 'rdyGo' && net.isHost && gate) go(gate.key, gate.seed, gate.diff); };
+  document.body.append(el); gateEl = el;
+}
+function gateUpdate() {
+  if (!gate) return; const hs = Object.keys(players).filter(k => !players[k].bot), L = gateEl?.querySelector('#rdyList');
+  if (L) L.innerHTML = hs.map(k => `<div>${gate.ok[k] ? '✅' : '⏳'} ${esc(players[k].name)}</div>`).join('');
+  if (hs.every(k => gate.ok[k])) go(gate.key, gate.seed, gate.diff);
+}
+net.on('mg:rdy', (d, from) => { if (net.isHost && gate && players[from]) { gate.ok[from] = 1; gateUpdate(); } });
+net.on('mg:ready', d => { if (!net.isHost && MINIGAMES[d.key]) showGate(d.key, d.diff); });
 net.on('mg:pick', (d, from) => { if (net.isHost) castVote(from, +d?.i); });
 net.on('mg:vote', d => { if (!net.isHost && MINIGAMES[d.key]) showVote(d.key); });
 // Bot skill 0..1 (host's setting + a stable per-bot wobble so bots differ). Host-only; never use ctx.rng for bots.
@@ -371,22 +419,25 @@ function startMg(key, seed, diff = 1) {
   let n = 3;
   const tick = () => {
     if (!mg || mg.key !== key || mg.inst) return;
-    if (n === 0) { sfx('go'); $('banner').innerHTML = ''; mg.inst = def.create(ctx); return; }
+    if (n === 0) { sfx('go'); $('banner').innerHTML = ''; mg.inst = def.create(ctx); let seen = {}; try { seen = JSON.parse(localStorage.getItem('pg-seen') || '{}'); } catch (e) {} if (!seen[key]) { seen[key] = 1; try { localStorage.setItem('pg-seen', JSON.stringify(seen)); } catch (e) {} helpCard(def, 8000); } return; }
     $('banner').innerHTML = `<small>${esc(def.name)}</small><div>${esc(def.desc)}</div><h2>${n--}</h2>`;
-    sfx('tick'); setTimeout(tick, 1000);
+    sfx(n === 0 ? 'tickhi' : 'tick'); setTimeout(tick, 1000);
   };
   tick();
 }
+const sessionWins = {};
 function endMg(pl, rk = pl.map((_, i) => i), adj) {
+  const gname = MINIGAMES[mg?.key]?.name || '';
+  pl.forEach((id, i) => { if (rk[i] === 0 && players[id]) sessionWins[players[id].name] = (sessionWins[players[id].name] || 0) + 1; });
   sfx(rk[pl.indexOf(me)] === 0 ? 'win' : 'click');
   const gg = awardGems(pl, rk, adj);
   mg?.inst?.cleanup(); mg = null; lock();
   if (pl.length) podiumFor(pl, rk, { secs: 4 });
   const pts = i => board.active ? `🪙${board.rewardFor(pl[i], rk[i], adj, pl.length)}${board.s?.mega && rk[i] === 0 ? ' +⭐' : ''}` : `+${pl.length - rk[i]}`;
-  $('hud').innerHTML = `<div class="mg res"><h2>${pl.length ? 'Results' : 'Stopped'}</h2>${pl.map((id, i) => `<div>${rk[i] + 1}. ${esc(players[id]?.name ?? '?')} <b>${pts(i)}</b></div>`).join('')}${gg ? `<div style="color:#7df;margin-top:4px">+${gg} gems</div>` : ''}</div>`;
-  setTimeout(() => { if (!mg) $('hud').innerHTML = ''; }, 4000);
+  $('hud').innerHTML = `<div class="mg res"><h2>${pl.length ? 'Results' : 'Stopped'}</h2>${gname ? `<small style="opacity:.7">${esc(gname)}</small>` : ''}${pl.map((id, i) => `<div style="${id === me ? 'color:#ffd93d;font-weight:bold' : ''}">${['🥇', '🥈', '🥉'][rk[i]] || rk[i] + 1 + '.'} ${esc(players[id]?.name ?? '?')} <b>${pts(i)}</b></div>`).join('')}${pl.length && Object.keys(sessionWins).length ? `<div style="margin-top:6px;opacity:.75;font-size:12px">Wins this session: ${Object.entries(sessionWins).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([n, w]) => esc(n) + ' ' + w).join(' · ')}</div>` : ''}${gg ? `<div style="color:#7df;margin-top:4px">+${gg} gems</div>` : ''}</div>`;
+  setTimeout(() => { if (!mg) $('hud').innerHTML = ''; }, 6000);
 }
-net.on('mg:start', d => { hideVote(); if (!net.isHost && MINIGAMES[d.key]) startMg(d.key, d.seed, d.diff ?? 1); });
+net.on('mg:start', d => { hideVote(); hideGate(); if (!net.isHost && MINIGAMES[d.key]) startMg(d.key, d.seed, d.diff ?? 1); });
 net.on('mg:msg', (d, from) => mg?.inst?.onMessage(d, from));
 net.on('mg:end', d => { if (!net.isHost && mg) endMg(d.placements, d.ranks, d.adj); });
 
@@ -418,7 +469,7 @@ function burstAt(id, c, n) { const g = world.m.get(id)?.g; if (g) world.burst(g.
 function popup(t) { $('banner').innerHTML = `<h2>${t}</h2>`; setTimeout(() => { if (!mg) $('banner').innerHTML = ''; }, 900); }
 function fx(t, a) {
   if (t === 'diceSkip') { world.skipDice(); return; }
-  if (t === 'dice') { sfx('roll'); world.rollDice(a.id, a.vals, players[a.id]?.dice || 'classic'); return; }
+  if (t === 'dice') { sfx('roll'); world.rollDice(a.id, a.vals, players[a.id]?.dice || 'classic', a.big ? 1.7 : 1); return; }
   if (t === 'roll') { popup('🎲 ' + a); return; }
   if (t === 'win' && board.s) { const s = board.s, ids = s.order.filter(id => players[id]), [o, r] = rankBy(ids, id => s.stars[id] * 1e6 + s.coins[id]); finalPodium(o, r); }
   if (t === 'mega') { sfx('star'); popup('⭐ MEGA MINIGAME ⭐'); return; }

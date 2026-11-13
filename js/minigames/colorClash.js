@@ -8,14 +8,14 @@ import { share, nameplate } from './kit.js';
 // gives lights its pad (green ring = right, red = wrong) and makes that player hop (or flinch), with live scores over their heads.
 const COLS = [['RED', '#e74c3c'], ['BLUE', '#3498db'], ['GREEN', '#2ecc71'], ['YELLOW', '#f1c40f']], HEX = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f];
 export default {
-  name: 'Color Clash', desc: 'Click (or press 1-4) the INK COLOR of the word, not what it says! +1 correct, -1 wrong. 20 seconds.',
+  name: 'Color Clash', desc: 'Click (or press 1-4) the INK COLOR of the word, not what it says! +1 correct, -1 wrong, and 5 right in a row gives a +1 bonus. 20 seconds.',
   create(ctx) {
     const sb = scoreboard(ctx, { timeout: 30, lower: false, bot: s => ({ v: Math.round(jit(mix(5, 26, s), .2)), t: 20 }) }), rounds = Array.from({ length: 80 }, () => { const w = ctx.rng() * 4 | 0; return { w, c: ctx.rng() < .8 ? (w + 1 + (ctx.rng() * 3 | 0)) % 4 : w }; });
-    let i = 0, score = 0, time = 0, done = false, shown = -2;
+    let streak = 0, i = 0, score = 0, time = 0, done = false, shown = -2;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, st = {}, np = {}; ids.forEach(id => st[id] = 0);
     const el = document.createElement('div'); el.className = 'mg';
     el.innerHTML = '<h3 id="s"></h3><h2 id="w"></h2><div>' + COLS.map((c, k) => `<button data-k="${k}" style="background:${c[1]};width:60px;height:44px;margin:3px">${k + 1}</button>`).join('') + '</div>'; ctx.hud.append(el);
-    const s = el.querySelector('#s'), w = el.querySelector('#w');
+    const s = el.querySelector('#s'), w = el.querySelector('#w'); el.style.background = '#0d0820f2'; el.style.border = '2px solid #ff4dd8'; w.style.cssText = 'font-size:44px;margin:4px 0;letter-spacing:2px;text-shadow:0 0 6px #000,0 0 2px #000';
 
     // ---------- the set ----------
     const dist = fitDist(W, 9.6, 14);
@@ -47,7 +47,7 @@ export default {
 
     // ---------- play ----------
     const answer = k => {
-      if (done) return; const ok = k === rounds[i].c; if (ok) { score++; sfx('click'); W.hop(me, .45); } else { score--; sfx('lose'); W.emote(me, 'shake'); W.popIcon(me, '❌'); }
+      if (done) return; const ok = k === rounds[i].c; if (ok) { score++; sfx('click'); W.hop(me, .45); if (++streak % 5 === 0) { score++; sfx('correct'); W.popIcon(me, '🔥'); } } else { streak = 0; score--; sfx('lose'); W.emote(me, 'shake'); W.popIcon(me, '❌'); }
       lightPad(k, ok); paint(me, k, ok); net.emit({ c: k, ok, sc: score }); i++;
     };
     el.onpointerdown = e => { const b = e.target.closest('[data-k]'); if (b) { e.stopPropagation(); answer(+b.dataset.k); } };

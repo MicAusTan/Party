@@ -4,7 +4,7 @@ import { getSet } from './wallet.js';
 // 1-8 pick a slice, scroll / arrow keys / the arrows in the middle turn the page. Mouse movement is accumulated (works under pointer lock).
 export function initWheel({ ok, send }) {
   const root = document.createElement('div'); root.id = 'wheel'; root.hidden = true;
-  root.innerHTML = '<div id="wring"></div><div id="whub"><b id="wname"></b><div><button data-p="-1" tabindex="-1">◂</button> <small id="wpage"></small> <button data-p="1" tabindex="-1">▸</button></div></div>';
+  root.innerHTML = '<div id="wring"></div><div id="whub"><b id="wname"></b><button data-s="1" tabindex="-1" title="Stop your current emote or walk style">Stop</button><div><button data-p="-1" tabindex="-1">◂</button> <small id="wpage"></small> <button data-p="1" tabindex="-1">▸</button></div></div>';
   const btn = document.createElement('button'); btn.id = 'emoBtn'; btn.tabIndex = -1; btn.title = 'Emotes (hold G)'; btn.textContent = '😀'; btn.hidden = true;
   document.body.append(root, btn);
   const ring = root.querySelector('#wring'), nm = root.querySelector('#wname'), pg = root.querySelector('#wpage');
@@ -37,7 +37,7 @@ export function initWheel({ ok, send }) {
   });
   addEventListener('keyup', e => { if (e.code === 'KeyG' && open && !sticky) { if (performance.now() - downAt < 220) sticky = true; else pick(); } });
   addEventListener('mousemove', e => {
-    if (!open) return; vx += e.movementX || 0; vy += e.movementY || 0;
+    if (!open) return; if (document.pointerLockElement) { vx += e.movementX || 0; vy += e.movementY || 0; } else { vx = e.clientX - innerWidth / 2; vy = e.clientY - innerHeight / 2; }      // follow the real cursor so the highlighted slice is the one you see
     const l = Math.hypot(vx, vy); if (l > 150) { vx *= 150 / l; vy *= 150 / l; }
     if (l < 36) hov = -1; else { const a = (Math.atan2(vx, -vy) + 2 * Math.PI) % (2 * Math.PI), k = Math.round(a / (Math.PI / 4)) % 8; hov = k < slots.length ? k : -1; }
     mark();
@@ -47,6 +47,7 @@ export function initWheel({ ok, send }) {
   root.addEventListener('pointerdown', e => e.stopPropagation());
   root.addEventListener('mouseover', e => { const b = e.target.closest('#wring button'); if (b) { hov = +b.dataset.k; mark(); } });
   root.addEventListener('click', e => {
+    const st = e.target.closest('[data-s]'); if (st) { send(-1); close(); return; }
     const p = e.target.closest('[data-p]'); if (p) { flip(+p.dataset.p); return; }
     const b = e.target.closest('#wring button'); if (b) { hov = +b.dataset.k; pick(); }
   });

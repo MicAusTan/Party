@@ -78,6 +78,7 @@ Object.assign(OVR.vpose, { hero: 110, dab: 50 });
 Object.assign(OVR.pet, { owl: 100, snail: 70, mushroom: 90 });
 Object.assign(OVR.pattern, { tracksuit: 60, pirate: 110 });
 Object.assign(OVR.coat, { argyle: 80, tiedye: 90 });
+Object.assign(OVR.coat, { sunset: 90, aurora: 130, carbon: 100, marble: 90, opal: 140, denim: 70, hologram: 150 });
 export const price = (c, v) => c === 'emote' ? (EMOTES[v]?.price || 0) : (OVR[c]?.[v] ?? BASE[c] ?? 50);
 // Starter items everyone owns from the start (plus each category's default and 'none').
 const STARTER = { hat: ['cone', 'cap', 'beanie', 'flower'], body: ['round', 'tall', 'bean'], face: ['glasses', 'happy', 'sleepy'], back: ['cape', 'tail', 'backpack'], pattern: ['stripes', 'belt', 'dots'] };   // only the basic dress-up categories start with extras

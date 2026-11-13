@@ -6,11 +6,11 @@ import { stage } from './stage.js';
 // running timer hits it. Your score is the total miss in milliseconds (lowest wins). Targets come from the shared seeded rng.
 const ROUNDS = 3;
 export default {
-  emotes: false, name: 'Target Time', desc: `A timer counts up and a random target time is shown. Press SPACE (or click) the moment the timer hits the target! ${ROUNDS} rounds, the smallest total miss wins.`,
+  emotes: false, name: 'Target Time', desc: `A timer counts up and a random target time is shown. Press SPACE (or click) the moment the timer hits the target! ${ROUNDS} rounds, the smallest total miss wins. Within 60ms is PERFECT, and back-to-back perfects take 100ms off your total.`,
   create(ctx) {
     const targets = Array.from({ length: ROUNDS }, () => +(2.5 + ctx.rng() * 7).toFixed(2)), ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, W = ctx.world;
     const sb = scoreboard(ctx, { timeout: targets.reduce((a, b) => a + b, 0) + 30, grace: 2.5, bot: s => ({ v: Math.round(targets.reduce((a, _) => a + rnd(0, mix(900, 90, s)), 0)), t: targets.reduce((a, b) => a + b, 0) + ROUNDS * 1.6 + 1 }) });
-    let r = 0, t = -1, phase = 'wait', total = 0, drawn = '', pause = 1.2; const errs = [];
+    let streak = 0, bonus = '', r = 0, t = -1, phase = 'wait', total = 0, drawn = '', pause = 1.2; const errs = [];
     const S = stage(ctx, { sky: 0x1b1340, fog: { color: 0x1b1340, near: 30, far: 75 }, light: .95, sun: { intensity: .9, pos: [0, 14, 8] }, cam: { pos: [0, 5.2, 13], look: [0, 3.6, 0] }, camFrom: [0, 9, 21], camT: 1.4 });
     S.cyl(40, 40, .5, 0x241c52, 0, -.5, 0, { seg: 40 }); S.box(11, 5.6, .6, 0x15112e, 0, 1.2, -1.2); S.box(11.4, .3, .8, 0xffd93d, 0, 6.8, -1.1); S.box(11.4, .3, .8, 0xffd93d, 0, .9, -1.1);
     const disp = S.screen(10.4, 5, 512, 250); disp.mesh.position.set(0, 4, -.85);
@@ -28,6 +28,7 @@ export default {
     };
     const press = () => {
       if (phase !== 'run' || r >= ROUNDS) return; const e = Math.round(Math.abs(t - targets[r]) * 1000); errs.push(e); total += e; phase = 'stopped'; pause = 1.4;
+      if (e <= 60) { streak++; sfx('correct'); W.popIcon(me, '✨'); if (streak >= 2) { total = Math.max(0, total - 100); bonus = 'PERFECT STREAK -100ms!'; } else bonus = 'PERFECT!'; } else { streak = 0; bonus = e <= 150 ? 'Great' : e <= 300 ? 'Good' : ''; }
       sfx(e < 150 ? 'star' : 'click'); const g = W.m.get(me)?.g; if (e < 150 && g) { W.emote(me, 'cheer'); W.burst(g.position.x, 2.5, g.position.z, '#ffd93d', 12); } else W.hop(me, .4); sb.prog((r + 1) / ROUNDS);
       if (r + 1 >= ROUNDS) sb.report(Math.round(total));
     };
@@ -41,7 +42,7 @@ export default {
         else if (phase === 'run') { t += dt; if (t > targets[r] + 3) { errs.push(3000); total += 3000; phase = 'stopped'; pause = 1.2; sfx('lose'); if (r + 1 >= ROUNDS) sb.report(Math.round(total)); } }
         else if (phase === 'stopped' && (pause -= dt) <= 0) { r++; if (r < ROUNDS) { phase = 'wait'; t = -1; pause = 1; } else phase = 'done'; }
         draw();
-        el.textContent = phase === 'done' ? `Total miss: ${Math.round(total)}ms - waiting for others...` : phase === 'run' ? 'Press at the target!' : '';
+        el.textContent = phase === 'done' ? `Total miss: ${Math.round(total)}ms - waiting for others...` : phase === 'run' ? 'Press at the target!' : phase === 'stopped' ? bonus : '';
         el.style.display = el.textContent ? '' : 'none';
       },
       endNow() { sb.endNow(); },

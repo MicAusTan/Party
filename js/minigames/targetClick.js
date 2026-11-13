@@ -12,8 +12,11 @@ export default {
   name: 'Target Practice', desc: 'Click the targets as fast as you can! 15 seconds, most hits wins. Missed targets move on.',
   create(ctx) {
     const HARD = ctx.diff === 1, LIFE = HARD ? .95 : 1.2;                              // hard: shorter-lived targets (several at once in solo, one extra per team in the team version)
-    const botFn = s => ({ v: Math.round(jit(mix(7, 26, s), .15) * (HARD ? .85 : 1)), t: 15 }), sb = scoreboard(ctx, { timeout: 25, lower: false, bot: botFn }), pos = Array.from({ length: 300 }, () => [ctx.rng() * 86, ctx.rng() * 78]);
+    const botFn = s => ({ v: Math.round(jit(mix(7, 26, s), .15) * (HARD ? .85 : 1)), t: 15 }), sb = scoreboard(ctx, { timeout: 25, lower: false, bot: botFn }), base = ctx.rng() * 2 ** 31 | 0;
     const TM = !!ctx.team;
+    const mk = salt => { let a = base ^ salt; const r = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; return Array.from({ length: 300 }, () => [r() * 86, r() * 78]); };
+    const sharedPos = mk(0), cache = {}, posFor = id => TM ? sharedPos : (cache[id] ??= mk([...String(id)].reduce((h, c) => h * 31 + c.charCodeAt(0) | 0, 7)));
+    const pos = posFor(ctx.me);
     let i = 0, hits = 0, time = 0, life = LIFE, done = false, born = 0;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, st = {}, np = {}; ids.forEach(id => st[id] = 0);
     const el = document.createElement('div'); el.className = 'mg'; el.innerHTML = '<h3 id="s"></h3>'; ctx.hud.append(el); const s = el.querySelector('#s');
@@ -31,7 +34,7 @@ export default {
     const hit = ring(.95, 0xe74c3c, 0); ring(.66, 0xffffff, .01); ring(.36, 0xe74c3c, .02); ring(.12, 0xffffff, .03); const halo = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.12, 32), new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: .8, side: THREE.DoubleSide })); tg.add(halo);
     const gap = Math.min(2.4, 14 / n); ids.forEach((id, k) => { const x = (k - (n - 1) / 2) * gap; W.put(id, x, 2.4, Math.PI); const pe = W.m.get(id); if (pe) pe.g.scale.setScalar(.7); np[id] = nameplate(S, ctx, id); np[id].mesh.position.set(x, 2.6, 2.4); np[id].set('0'); });
     const beam = (id, ti) => {          // a short laser from a player's chest to the target position
-      const g = W.m.get(id)?.g; if (!g) return; const a = new THREE.Vector3(g.position.x, 1.3, g.position.z), b = new THREE.Vector3(...tpos(pos[ti])), len = a.distanceTo(b);
+      const g = W.m.get(id)?.g; if (!g) return; const a = new THREE.Vector3(g.position.x, 1.3, g.position.z), b = new THREE.Vector3(...tpos(posFor(id)[ti])), len = a.distanceTo(b);
       const m = S.box(.07, .07, 1, ctx.players[id].color, 0, 0, 0, { basic: true, op: .9 }); m.geometry.translate(0, 0, .5); m.position.copy(a); m.lookAt(b); m.scale.z = len;
       S.after(.12, () => { S.root.remove(m); m.geometry.dispose(); m.material.dispose(); });
     };

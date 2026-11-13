@@ -9,16 +9,16 @@ const SETS = [['😀', '😃'], ['😄', '😁'], ['😂', '🤣'], ['🙂', '�
 // frames flash red. Everyone else strolls at the sides with a live "grid / penalty" sign over their head.
 const LIKE = [['😠', '😡'], ['😴', '😪'], ['🥰', '😍'], ['😀', '😃'], ['🙂', '😊'], ['🐭', '🐹'], ['🐕', '🐶'], ['🌕', '🌖'], ['🕐', '🕑'], ['🔶', '🔸'], ['🍊', '🍑'], ['🐱', '🐈']];   // look-alike pairs for the harder tiers
 export default {
-  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '5x5 grid.', def: true }, { n: 'Hard', m: 1.4, pen: 1, d: '9x9 grid, look-alike emoji.' }, { n: 'Insane', m: 2, pen: 3, d: '14x14 grid - tiny, look-alike emoji.' }],
+  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '5x5 grid.', def: true }, { n: 'Hard', m: 1.5, pen: 1, d: '9x9 grid, look-alike emoji.' }, { n: 'Insane', m: 2, pen: 3, d: '14x14 grid - tiny, look-alike emoji.' }, { n: 'Nightmare', m: 3, pen: 4, d: '14x14, look-alikes, and the odd one JUMPS to a new spot every 5 seconds.' }],
   name: 'Odd One Out', desc: 'Find the one emoji that\'s different! 8 grids, fastest wins. A wrong click costs 1 second.',
   create(ctx) {
-    const D = ctx.diff ?? 0, G = [5, 9, 14][D], SP = D ? 12 / G : 1.75, KF = SP / 1.75, CY = D ? 6.4 : 6.7;                 // big grids fill the whole wall
-    const sb = scoreboard(ctx, { timeout: [70, 110, 170][D], bot: s => { const T = jit(mix(40, 15, s), .15) * [1, 1.7, 2.8][D]; return { v: Math.round(T * 1000), t: T }; } }), bag = D ? [...LIKE] : [...SETS];
+    const D = ctx.diff ?? 0, G = [5, 9, 14, 14][D], SP = D ? 11 / G : 1.75, KF = SP / 1.75, CY = D ? 5.9 : 6.7;                 // big grids fill the whole wall
+    const sb = scoreboard(ctx, { timeout: [70, 110, 170, 240][D], bot: s => { const T = jit(mix(40, 15, s), .15) * [1, 1.7, 2.8, 4][D]; return { v: Math.round(T * 1000), t: T }; } }), bag = D ? [...LIKE] : [...SETS];
     for (let k = bag.length - 1; k > 0; k--) { const j = ctx.rng() * (k + 1) | 0; [bag[k], bag[j]] = [bag[j], bag[k]]; }   // shuffled: no repeated sets in a game
     const rounds = Array.from({ length: 8 }, (_, k) => ({ s: bag[k], odd: ctx.rng() * G * G | 0 }));
-    let i = 0, pen = 0, time = 0, done = false, lastT = '', shownG = -1;
+    let i = 0, pen = 0, time = 0, done = false, lastT = '', shownG = -1, jumpT = 5;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, st = {}, np = {}; ids.forEach(id => st[id] = { g: 0, p: 0 });
-    const el = document.createElement('div'); el.className = 'mg'; el.innerHTML = '<h3 id="t"></h3>'; ctx.hud.append(el); const tl = el.querySelector('#t');
+    const el = document.createElement('div'); el.className = 'mg'; el.style.cssText = 'pointer-events:none;padding:3px 12px;background:#000a'; el.innerHTML = '<h3 id="t"></h3>'; ctx.hud.append(el); const tl = el.querySelector('#t');
 
     // ---------- the set ----------
     const dist = fitDist(W, 10, 15) * 1.12;
@@ -31,7 +31,8 @@ export default {
       const box = S.box(1.5 * KF, 1.5 * KF, .18, 0xd4a017, x, y - .75 * KF, .05); box.userData.k = k;
       const pic = S.screen(1.2 * KF, 1.2 * KF, 128, 128); pic.mesh.position.set(x, y, .15); return { box, pic, x, y };
     });
-    const drawGrid = () => frames.forEach((f, k) => f.pic.draw((c, w, h) => { const r = rounds[i]; c.fillStyle = '#fffdf2'; c.fillRect(0, 0, w, h); c.font = '84px serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(r.s[k === r.odd ? 1 : 0], w / 2, h / 2 + 6); }));
+    const drawCell = k => frames[k].pic.draw((c, w, h) => { const r = rounds[Math.min(i, rounds.length - 1)]; c.fillStyle = '#fffdf2'; c.fillRect(0, 0, w, h); c.font = '84px serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(r.s[k === r.odd ? 1 : 0], w / 2, h / 2 + 6); });
+    const drawGrid = () => frames.forEach((f, k) => drawCell(k));
     ids.forEach((id, k) => { const sd = k % 2 ? 1 : -1, z = 1.4 - (k >> 1) * 2.6, x = sd * 7.4; W.put(id, x, z, sd < 0 ? Math.PI / 2 : -Math.PI / 2); np[id] = nameplate(S, ctx, id, 2.1, .72); np[id].mesh.position.set(x, 3.4, z); np[id].set('Grid 1/8'); });
     S.anim(() => {
       if (shownG !== i && !done) { shownG = i; drawGrid(); }
@@ -43,13 +44,14 @@ export default {
     // ---------- play ----------
     const onDown = e => {
       if (done) return; const b = pick(W, S.root, e, frames.map(f => f.box)); if (!b) return; const f = frames[b.userData.k];
-      if (b.userData.k === rounds[i].odd) { i++; sfx('click'); W.hop(me, .4); W.burst(f.x, f.y, .5, '#ffd93d', 14); net.emit({ g: i, p: pen }); if (i >= rounds.length) { done = true; sb.report(Math.round(time * 1000 + pen * 1000)); W.emote(me, 'cheer'); } }
+      if (b.userData.k === rounds[i].odd) { i++; jumpT = 5; sfx('click'); W.hop(me, .4); W.burst(f.x, f.y, .5, '#ffd93d', 14); net.emit({ g: i, p: pen }); if (i >= rounds.length) { done = true; sb.report(Math.round(time * 1000 + pen * 1000)); W.emote(me, 'cheer'); } }
       else { pen++; sfx('lose'); W.shake(.1, .15); b.material.emissive.setHex(0xaa0000); S.after(.25, () => b.material.emissive.setHex(0)); W.popIcon(me, '❌'); net.emit({ g: i, p: pen }); }
     };
     addEventListener('pointerdown', onDown);
     return {
       update(dt) {
         sb.prog(i / rounds.length), sb.tick(dt); if (!done) time += dt;
+        if (D === 3 && !done && shownG === i && (jumpT -= dt) <= 0) { jumpT = 5; const r = rounds[i], old = r.odd; do { r.odd = Math.random() * G * G | 0; } while (r.odd === old); drawCell(old); drawCell(r.odd); W.popIcon(me, '🔀'); sfx('whoosh'); }
         const t = done ? `Done! ${(time + pen).toFixed(1)}s - waiting for others...` : `Grid ${i + 1}/8   ${time.toFixed(1)}s   Penalty: ${pen}s`; if (t !== lastT) { tl.textContent = t; lastT = t; }
       },
       endNow() { sb.endNow(); },

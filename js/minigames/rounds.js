@@ -114,7 +114,8 @@ export default {
       if (w) wins[w]++;
       if ((w && wins[w] >= NEED) || round >= MAXR) {
         over = true; ctx.send(pack());
-        return ctx.finish([...ids].sort((a, b) => wins[b] - wins[a] || st[b].dealt - st[a].dealt));
+        const order = [...ids].sort((a, b) => wins[b] - wins[a] || st[b].dealt - st[a].dealt);
+        S.after(2.2, () => ctx.finish(order)); return;
       }
       round++; const pickers = [...ids];                 // everyone picks a card after every round (winners too)
       if (!pickers.length) return startRound();

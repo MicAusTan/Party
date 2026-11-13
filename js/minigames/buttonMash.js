@@ -44,15 +44,17 @@ export default {
     };
 
     // ---------- play ----------
-    const press = () => {
-      if (over || fin) return;
+    let lastSrc = '', lastAt = 0; const stamps = [];         // one input device at a time: after one is used the other is ignored for 400ms (no mouse+space double input)
+    const cps = () => { const n = performance.now(); return stamps.filter(x => n - x < 1000).length; };
+    const press = src => {
+      if (over || fin) return; const now = performance.now(); if (src !== lastSrc && now - lastAt < 400) return; lastSrc = src; lastAt = now; stamps.push(now); if (stamps.length > 80) stamps.splice(0, 40);
       sfx('click'); mine++;
       if (ctx.isHost) counts[ctx.me]++; else ctx.send({ press: 1 });
     };
-    const key = e => { if (e.code === 'Space' && !e.repeat) press(); };
-    addEventListener('keydown', key); addEventListener('pointerdown', press);
+    const key = e => { if (e.code === 'Space' && !e.repeat) press('k'); }, ptr = () => press('m');
+    addEventListener('keydown', key); addEventListener('pointerdown', ptr);
     const render = () => {
-      el.innerHTML = `<h2>${Math.max(0, Math.ceil(t))}</h2><div>MASH SPACE / TAP!</div>` +
+      el.innerHTML = `<h2>${Math.max(0, Math.ceil(t))}</h2><div>MASH SPACE / TAP! · ${cps()} CPS</div>` +
         Object.values(ctx.players).map(p => `<div class="bar"><span style="width:${Math.round((counts[p.id] || 0) / Math.max(10, ...Object.values(counts)) * 100)}%;background:${p.color}"></span><b>${ctx.esc(p.name)} ${counts[p.id] || 0}</b></div>`).join('');
     };
     return {
@@ -67,7 +69,7 @@ export default {
         if (ctx.isHost) { if (m.press && !over && from in counts) counts[from]++; }
         else if (m.c) { Object.assign(counts, m.c); if (m.end) startFin(); }
       },
-      cleanup() { removeEventListener('keydown', key); removeEventListener('pointerdown', press); el.remove(); S.cleanup(); },
+      cleanup() { removeEventListener('keydown', key); removeEventListener('pointerdown', ptr); el.remove(); S.cleanup(); },
     };
   },
 };

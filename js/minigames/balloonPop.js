@@ -8,15 +8,16 @@ import { stage } from './stage.js';
 const DUR = 15, RISE = .03;
 export default {
   tiers: [{ n: 'Normal', m: 1, pen: 0, d: 'Pop balloons, avoid bombs.' }, { n: 'Hard', m: 1.5, pen: 2, d: 'More balloons, plus gold (+3) and spiky (-1) ones.' }],
-  name: 'Balloon Pop', desc: 'Pop balloons for +1 - but DON\'T click the black bombs (-3)! 15 seconds. (Hard: gold balloons are +3, spiky dark-red ones -1.)',
+  name: 'Balloon Pop', desc: 'Pop balloons for +1 (5 in a row = +2 bonus) - but DON\'T click the black bombs (-3)! 15 seconds. (Hard: gold balloons are +3, spiky dark-red ones -1.)',
   create(ctx) {
     const HARD = ctx.diff === 1, sb = scoreboard(ctx, { timeout: 25, lower: false, bot: s => ({ v: Math.round(jit(mix(8, 30, s), .18) * (HARD ? 1.2 : 1)), t: DUR }) });
     const K = ctx.team ? 1.5 : 1;       // team version: a wider sky with more balloons
     const bs = Array.from({ length: Math.round((HARD ? 115 : 80) * K) }, (_, i) => {
       const x = 25 + ctx.rng() * 410, sp = 70 + ctx.rng() * 70, r = ctx.rng(), pB = HARD ? .2 : .2, v = r < pB ? -3 : HARD && r < pB + .1 ? 3 : HARD && r < pB + .2 ? -1 : 1;       // hard: gold +3 and spiky -1 balloons too
-      return { ts: i * (HARD ? .135 : .19) / K, x, sp: v === 3 ? sp * 1.25 : sp, v, bomb: v < 0, c: v === 3 ? new THREE.Color(0xffd23f) : new THREE.Color().setHSL(ctx.rng(), .8, .55), dead: false, i, y: 0 };
+      const tm = ctx.team && v === 1 ? ctx.rng() * ctx.teamCount | 0 : -1, hue = ctx.rng();
+      return { ts: i * (HARD ? .135 : .19) / K, x, sp: v === 3 ? sp * 1.25 : sp, v, tm, bomb: v < 0, c: v === 3 ? new THREE.Color(0xffd23f) : tm >= 0 ? new THREE.Color([0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f][tm]) : new THREE.Color().setHSL(hue, .8, .55), dead: false, i, y: 0 };
     });
-    let time = 0, score = 0, done = false, pend = null, sendT = 0, tt = 0;
+    let streak = 0, time = 0, score = 0, done = false, pend = null, sendT = 0, tt = 0;
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, sc = {}, dirty = {}; ids.forEach(id => { sc[id] = 0; dirty[id] = true; });
 
     // ---------- the set ----------
@@ -62,9 +63,10 @@ export default {
       S.root.updateMatrixWorld(true); W.cam.updateMatrixWorld(); ray.setFromCamera(ndc, W.cam);
       const live = bs.filter(b => !b.dead && b.g.visible), hits = ray.intersectObjects(live.map(b => b.body), false); if (!hits.length) return;
       const b = live.find(x => x.body === hits[0].object); b.dead = true; b.g.visible = false;
-      score += b.v; sc[me] = score; dirty[me] = true; sfx(b.bomb ? 'hit' : 'click'); pend = b.bomb ? 1 : 0;
+      const rival = b.tm >= 0 && b.tm !== ctx.team(me), val = rival ? 0 : b.v; score += val; let combo = false; if (val < 0) streak = 0; else if (!rival && ++streak % 5 === 0) { score += 2; combo = true; } sc[me] = score; dirty[me] = true; pend = b.bomb ? 1 : 0;
       W.burst(b.g.position.x, b.g.position.y, b.g.position.z, b.bomb ? '#ff9f1a' : '#' + b.c.getHexString(), b.bomb ? 18 : 10);
-      if (b.bomb) { W.shake(.2, .25); W.emote(me, 'sad'); W.popIcon(me, '💥'); } else W.hop(me, .35);
+      sfx(b.bomb ? 'hit' : 'pop');
+      if (b.bomb) { W.shake(.2, .25); W.emote(me, 'sad'); W.popIcon(me, '💥'); } else { W.hop(me, .35); if (combo) { W.popIcon(me, '🔥'); sfx('correct'); } }
     };
     addEventListener('pointerdown', onDown);
     const apply = ev => { if (!(ev.id in sc)) return; sc[ev.id] = ev.sc; dirty[ev.id] = true; if (ev.b) { W.emote(ev.id, 'sad'); W.popIcon(ev.id, '💥'); } else W.hop(ev.id, .35); };

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { stage } from './minigames/stage.js';
 import { OPTS } from './look.js';
 import { shapeGeo } from './shapes.js';
+import { Q } from './quality.js';
 // Victory podium: a short celebration set shown after each minigame (secs ~4) and at the end of a game (secs ~7).
 //   const pod = showPodium(world, players, orderBestFirst, ranks, { secs, title, onEnd }); pod.end();
 // Tied ranks share a tier. Tiers 1-3 stand on the podium, everyone else stands to the sides and sulks.
@@ -41,6 +42,7 @@ const TIER = [{ h: 1.8, c: 0xf1c40f, t: '1ST' }, { h: 1.2, c: 0xc0c8d0, t: '2ND'
 // Stage scenery: static + animated props behind/around the podium. Returns { update(dt, tt) }. Works under any scene root (podium or shop preview).
 // Spotlight rigs (the winner's choice): beams of different shape, size and origin; 'rig' adds floor stage lights, 'disco' a mirror ball with sweeping colour beams.
 export function buildSpot(kind, root, mid = 0, total = 4, x0 = 0, w0 = 2.4) {
+  if (Q.potato) kind = 'classic';
   const ups = [], MB = (col, op) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false, side: THREE.DoubleSide });
   const beam = (r, h, col, op = .12, flip = false) => { const g = new THREE.ConeGeometry(r, h, 24, 1, true); if (flip) g.rotateX(Math.PI); g.translate(0, h / 2, 0); return new THREE.Mesh(g, MB(col, op)); };      // base on the floor, light source at the top (flip: source at the bottom)
   const at = (m, x, y, z, rz = 0) => { const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.z = rz; g.add(m); root.add(g); return g; };
@@ -105,6 +107,7 @@ export function drawBanner(c, w, h, style, text) {
   else { c.fillStyle = '#000b'; c.fillRect(0, 0, w, h); fnt(); c.fillStyle = '#ffd93d'; c.fillText(text, w / 2, 70); }
 }
 export function buildStage(id, root, mid = 0, total = 4) {
+  if (Q.potato) return { update() {} };
   const ups = [], R = total / 2 + 10, rnd = (a, b) => a + Math.random() * (b - a), pick = a => a[Math.random() * a.length | 0];
   const mk = (geo, col, x, y, z, basic = true, o = 1) => { const m = new THREE.Mesh(geo, basic ? new THREE.MeshBasicMaterial({ color: col, transparent: o < 1, opacity: o, depthWrite: o >= 1 }) : new THREE.MeshStandardMaterial({ color: col, flatShading: true })); m.position.set(mid + x, y, z); root.add(m); return m; };
   const back = (n, f) => { for (let i = 0; i < n; i++) { const a = Math.PI * (.12 + .76 * i / Math.max(1, n - 1)); f(i, Math.cos(a) * R * 1.3, -Math.sin(a) * R * .9 - 3, a); } };
@@ -255,20 +258,35 @@ const DECOR = {
 // Pedestal shapes change the height and silhouette (not just the looks). Boxy ones keep the skin's front decorations.
 const SHAPES = { standard: 0, tall: .9, short: -.35, tiered: .25, round: 0, hex: 0, pillar: 1.2, float: .45, funnel: .15, stack: .35, obelisk: .5 };
 export const PSHAPE_IDS = Object.keys(SHAPES);
-export function pedLayout(skin, shape, h0) { const H = Math.max(.3, h0 + (SHAPES[shape] ?? 0)), boxy = !shape || shape === 'standard' || shape === 'tall' || shape === 'short'; return { H, boxy, stand: boxy ? standY(skin, H) : H + .02 }; }
-function oddShape(P, shape, sk, base, px, pw, H) {
+export function pedLayout(skin, shape, h0) { const H = Math.max(.3, h0 + (SHAPES[shape] ?? 0)), boxy = !shape || shape === 'standard' || shape === 'tall' || shape === 'short'; return { H, boxy, stand: boxy ? standY(skin, H) : H + (STAND[skin] ?? .02) }; }
+function oddBody(P, shape, sk, base, px, pw, H) {
   const glow = sk?.glow ?? 0xffffff, r = Math.min(pw / 2, 1.2);
   if (shape === 'tiered') { P.box(pw, H * .4, 2.4, base, px, 0, 0); P.box(pw * .78, H * .35, 2.0, lt(base, .15), px, H * .4, 0); P.box(pw * .56, H * .25, 1.6, lt(base, .3), px, H * .75, 0); }
-  else if (shape === 'round' || shape === 'hex') { const sg = shape === 'hex' ? 6 : 28; P.cyl(r, r, H, base, px, 0, 0, { seg: sg }); P.cyl(r + .05, r + .05, .08, lt(base, .3), px, H - .04, 0, { seg: sg }); P.cyl(r + .05, r + .05, .1, sh(base, .7), px, 0, 0, { seg: sg }); if (sk?.glow) P.cyl(r + .06, r + .06, .05, glow, px, H * .5, 0, { seg: sg, basic: true }); }
+  else if (shape === 'round' || shape === 'hex') { const sg = shape === 'hex' ? 6 : 28; if (sk?.bands) sk.bands.forEach((bc, bi) => P.cyl(r, r, H / sk.bands.length, bc, px, bi * H / sk.bands.length, 0, { seg: sg })); else P.cyl(r, r, H, base, px, 0, 0, { seg: sg }); P.cyl(r + .05, r + .05, .08, lt(base, .3), px, H - .04, 0, { seg: sg }); P.cyl(r + .05, r + .05, .1, sh(base, .7), px, 0, 0, { seg: sg }); if (sk?.glow) P.cyl(r + .06, r + .06, .05, glow, px, H * .5, 0, { seg: sg, basic: true }); }
   else if (shape === 'pillar') { P.box(pw * .5, H, 1.3, base, px, 0, 0); P.box(pw * .85, .18, 1.9, lt(base, .3), px, H - .18, 0); P.box(pw * .8, .22, 1.8, sh(base, .7), px, 0, 0); if (sk?.glow) P.box(pw * .5 + .04, .06, 1.34, glow, px, H * .5, 0, { basic: true }); }
   else if (shape === 'float') { P.box(pw, .35, 2.2, base, px, H - .35, 0); P.box(pw - .1, .06, 2.1, sk?.glow ?? 0x4dd0e1, px, H - .41, 0, { basic: true }); P.cone(.65, H - .4, sk?.glow ?? 0x4dd0e1, px, 0, 0, { basic: true, op: .18 }); }
   else if (shape === 'stack') { for (let i = 0; i < 4; i++) { const r2 = r * (1 - i * .05 + (i % 2 ? .1 : 0)); P.cyl(r2, r2, H / 4, i % 2 ? lt(base, .22) : base, px, i * H / 4, 0, { seg: 28 }); } }
   else if (shape === 'obelisk') { P.cyl(.62, Math.min(pw / 2 + .2, 1.3), H, base, px, 0, 0, { seg: 4 }); P.cyl(.7, .7, .08, lt(base, .3), px, H - .04, 0, { seg: 4 }); }
   else if (shape === 'funnel') { const r1 = Math.min(pw / 2 + .3, 1.3); P.cyl(r1, .45, H, base, px, 0, 0, { seg: 20 }); P.cyl(r1 + .05, r1 + .05, .08, lt(base, .3), px, H - .04, 0, { seg: 20 }); }
 }
+// Odd silhouettes keep the skin's decorations: front decals are re-projected onto the shape's real front surface and scaled to its width.
+function oddShape(P, shape, sk, base, px, pw, H, skinId) {
+  oddBody(P, shape, sk, base, px, pw, H);
+  const r = Math.min(pw / 2, 1.2), r1 = Math.min(pw / 2 + .3, 1.3), rb = Math.min(pw / 2 + .2, 1.3), segs = shape === 'hex' ? 6 : 28;
+  if (sk?.strip && ['round', 'hex', 'stack', 'funnel'].includes(shape)) P.cyl(r + .02, r + .02, .14, sk.strip, px, H * .5 - .07, 0, { seg: segs });
+  const dec = DECOR[skinId]; if (!dec) return;
+  const sx = shape === 'pillar' ? .5 : shape === 'tiered' ? 1 : Math.max(.6, Math.min(1.3, 2 * ({ round: r, hex: r, stack: r, funnel: r1, obelisk: rb }[shape] ?? pw / 2) / pw));
+  const fz = y => ({ round: r, hex: r, stack: r, funnel: .45 + (r1 - .45) * (y / H), obelisk: .62 + (rb - .62) * (1 - y / H), pillar: .65, tiered: y < H * .4 ? 1.2 : y < H * .75 ? 1.0 : .8 })[shape] ?? 1.2, front = z => z > 1.1 && z < 1.3, fl = shape === 'float';
+  const P2 = {
+    box: (w, h, d, c, x, y, z, o) => front(z) ? (fl ? null : P.box(w * sx, h, d, c, px + (x - px) * sx, y, fz(y + h / 2) + (z - 1.2), o)) : P.box(w, h, d, c, x, y, z, o),
+    cyl: (rt, rb2, h, c, x, y, z, o) => front(z) ? (fl ? null : P.cyl(rt, rb2, h, c, px + (x - px) * sx, y, fz(y + h / 2) + (z - 1.2), o)) : P.cyl(rt, rb2, h, c, x, y, z, o),
+    cone: (...a) => P.cone(...a),
+  };
+  dec(P2, px, pw * sx, H);
+}
 export function pedestal(P, skinId, T, px, pw, shape = 'standard') {
   const sk = SKINS[skinId], base = sk ? sk.c : T.c, lay = pedLayout(skinId, shape, T.h), H = lay.H;
-  if (!lay.boxy) { if (sk?.bands) P.box(pw, H, 2.4, sk.bands[0], px, 0, 0); else oddShape(P, shape, sk, base, px, pw, H); return; }
+  if (!lay.boxy) { oddShape(P, shape, sk, sk?.bands ? sk.bands[0] : base, px, pw, H, skinId); return; }
   if (sk?.bands) sk.bands.forEach((bc, bi) => P.box(pw, H / sk.bands.length, 2.4, bc, px, bi * H / sk.bands.length, 0));
   else P.box(pw, H, 2.4, base, px, 0, 0);
   // overlays are inset sideways (never overlap a neighbour) and stick out past the base box, so no two faces are coplanar
@@ -279,7 +297,7 @@ export function pedestal(P, skinId, T, px, pw, shape = 'standard') {
 }
 // Win-effect particles (instanced). show(true) starts them, update(dt, tt, active) each frame. Works in any scene root.
 export function createFx(id, root, mid, total, W) {
-  const FX = FXS[id] || FXS.confetti, FW = ['#ff4d6d', '#ffd93d', '#4dd0e1', '#7cf08a', '#b28dff', '#ff9f1a'], N = 150, cols = FX.cols, P = [], dm = new THREE.Object3D();
+  const FX = FXS[id] || FXS.confetti, FW = ['#ff4d6d', '#ffd93d', '#4dd0e1', '#7cf08a', '#b28dff', '#ff9f1a'], N = Q.potato ? 40 : 150, cols = FX.cols, P = [], dm = new THREE.Object3D();
   const im = new THREE.InstancedMesh(FX.geo(), new THREE.MeshBasicMaterial({ color: 0xffffff }), N); root.add(im);
   let fwT = 0, on = false;
   for (let i = 0; i < N; i++) { P.push({ x: mid + (Math.random() - .5) * (total + 8), y: 3 + Math.random() * 9, z: (Math.random() - .5) * 8, v: 1 + Math.random() * 1.5, r: Math.random() * 6, rs: 2 + Math.random() * 5, sw: Math.random() * 6 }); im.setColorAt(i, new THREE.Color(cols[i % cols.length])); }
