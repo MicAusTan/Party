@@ -140,7 +140,7 @@ let prevN = 0;
 function setPlayers(p) {
   const n = Object.keys(p).length; if (prevN && n > prevN) sfx('join'); prevN = n;
   players = p; world.sync(players);
-  $('players').innerHTML = Object.values(players).map(q => `<div style="color:${q.color}">${q.id === 'host' ? '👑' : '●'} ${esc(q.name)}${q.title && q.title !== 'none' ? `<small> ${OPTS.title.vals[q.title]}</small>` : ''} <b>${q.score || 0}</b></div>`).join('');
+  $('players').innerHTML = Object.values(players).map(q => `<div style="color:${q.color}">${q.id === 'host' ? '👑' : '●'} ${esc(q.name)}${q.away ? ' <small>(reconnecting...)</small>' : ''}${q.title && q.title !== 'none' ? `<small> ${OPTS.title.vals[q.title]}</small>` : ''} <b>${q.score || 0}</b></div>`).join('');
   lock();
 }
 const pushLobby = () => { setPlayers(players); net.broadcast('lobby', players); net.broadcast('opt', { pets: cfg.pets !== false }); };
@@ -274,11 +274,11 @@ function addDummy(fill) {
   sim[id] = { x: (n % 5) * 2 - 4, z: 2, ix: 0, iz: 0 }; if (partyState) players[id].score = 0; pushLobby(); if (board.active) board.addPlayer(id);
 }
 function removeDummy() {
-  const id = Object.keys(players).reverse().find(k => players[k].bot); if (!id) return;
+  const id = Object.keys(players).reverse().find(k => players[k].bot && !players[k].away); if (!id) return;
   delete players[id]; delete sim[id]; board.onLeave(id); pushLobby();
 }
 $('practice').onclick = e => { const p = e.target.dataset.p; if (p === 'add') addDummy(); else if (p === 'rem') removeDummy(); else if (p === 'exit') ask('Exit practice?', 'You will leave practice mode.', 'Exit').then(y => y && location.reload()); };
-$('leaveBtn').onclick = async () => { if (await ask('Leave the game?', net.isHost ? 'You are the host: everyone will be disconnected.' : 'You will disconnect from the room.', 'Leave')) { try { net.hostConn?.close(); net.peer?.destroy(); } catch {} location.reload(); } };
+$('leaveBtn').onclick = async () => { if (await ask('Leave the game?', net.isHost ? 'You are the host: everyone will be disconnected.' : 'You will disconnect from the room.', 'Leave')) { try { if (net.isHost) net.peer?.destroy(); else net.leave(); } catch {} setTimeout(() => location.reload(), net.isHost ? 0 : 350); } };
 
 $('host').onclick = async () => {
   try {
@@ -287,12 +287,13 @@ $('host').onclick = async () => {
     enter(code);
   } catch (e) { alert('Could not host: ' + (e.type || e)); }
 };
-$('join').onclick = async () => {
+$('join').onclick = async auto => {           // auto === true: a silent re-join after a page refresh (no alert if the room is gone)
   try {
     await net.join($('code').value.trim()); me = net.id;
     net.send('hello', { name: myName(), ...look }); enter($('code').value.toUpperCase());
-  } catch (e) { alert('Could not join: ' + (e.type || e)); }
+  } catch (e) { if (auto === true) { try { sessionStorage.removeItem('pg-pid'); } catch {} } else alert('Could not join: ' + (e.type || e)); }
 };
+{ let room = null; try { room = sessionStorage.getItem('pg-room'); } catch {} if (room && !net.isHost) setTimeout(() => { $('code').value = room; $('join').onclick(true); }, 300); }       // refreshed the page mid-game: back into the same room and seat
 
 // ---- host-side lobby handling
 net.on('hello', (d, from) => {
@@ -301,15 +302,25 @@ net.on('hello', (d, from) => {
   admit(from, d);
 });
 function admit(from, d) {
-  const n = Object.keys(players).length;
-  players[from] = { id: from, name: String(d.name).slice(0, 12), ...mkLook(d, from) };
-  sim[from] = { x: (n % 5) * 2 - 4, z: 2, ix: 0, iz: 0 }; if (partyState) players[from].score = 0; pushLobby();
+  const old = players[from], n = Object.keys(players).length;                       // old = this player's seat if they are coming BACK (reconnect / refresh)
+  if (away[from]) { clearTimeout(away[from]); delete away[from]; }
+  players[from] = { id: from, name: String(d.name).slice(0, 12), ...mkLook(d, from) }; if (old?.score != null) players[from].score = old.score;
+  sim[from] = sim[from] || { x: (n % 5) * 2 - 4, z: 2, ix: 0, iz: 0 }; sim[from].ix = sim[from].iz = 0; if (partyState && players[from].score == null) players[from].score = 0; pushLobby();
   if (partyState) net.sendTo(from, 'party', partyState);
   if (board.active) board.addPlayer(from);
 }
 const admitQueued = () => queued.splice(0).forEach(([f, d]) => net.conns.has(f) && admit(f, d));
 net.on('cust', (d, from) => { const p = players[from]; if (p) { Object.assign(p, mkLook(d, from)); pushLobby(); } });
-net.on('leave', (_, from) => { const qi = queued.findIndex(q => q[0] === from); if (qi >= 0) queued.splice(qi, 1); delete players[from]; delete sim[from]; board.onLeave(from); pushLobby(); });
+// A dropped player keeps their seat for AWAY_MS while a game is running: a bot plays for them (p.bot + p.away) and they slot back in when they reconnect.
+const away = {}, AWAY_MS = 150000;
+function dropPlayer(from) { const qi = queued.findIndex(q => q[0] === from); if (qi >= 0) queued.splice(qi, 1); clearTimeout(away[from]); delete away[from]; if (!players[from]) return; delete players[from]; delete sim[from]; board.onLeave(from); pushLobby(); }
+net.on('leave', (_, from) => {
+  const p = players[from]; if (!p || away[from] || !(board.active || partyState || mg)) return dropPlayer(from);
+  const qi = queued.findIndex(q => q[0] === from); if (qi >= 0) queued.splice(qi, 1);
+  p.bot = true; p.away = true; away[from] = setTimeout(() => dropPlayer(from), AWAY_MS); pushLobby(); toast(`${p.name} lost connection - a bot plays for them until they are back`, 3500);
+  if (board.active) board.botTurn();            // if it was their turn, the bot takes it now
+});
+net.on('bye', (_, from) => dropPlayer(from));
 net.on('input', (d, from) => { if (sim[from]) { sim[from].ix = +d.x || 0; sim[from].iz = +d.z || 0; } });
 let waitEl = null;
 function hideWait() { waitEl?.remove(); waitEl = null; }
@@ -318,7 +329,16 @@ net.on('queued', d => {
   hideWait(); waitEl = document.createElement('div'); waitEl.className = 'box'; waitEl.style.cssText = 'top:18%;left:50%;transform:translateX(-50%);z-index:30;text-align:center;max-width:min(440px,92vw);pointer-events:none';
   waitEl.innerHTML = `<small style="opacity:.7">Waiting for the next round</small><h2 style="margin:4px 0">${esc(def?.name || 'A minigame')} is being played</h2><div>${esc(def?.desc || '')}</div><small style="opacity:.7">You'll join automatically when it ends.</small>`; document.body.append(waitEl);
 });
-net.on('closed', () => alert('Host disconnected'));
+let lostEl = null;
+net.on('lost', () => {
+  if (net.isHost || lostEl) return; lostEl = document.createElement('div'); lostEl.className = 'box'; lostEl.style.cssText = 'top:12px;left:50%;transform:translateX(-50%);z-index:80;text-align:center;pointer-events:none';
+  lostEl.innerHTML = '⚠ Connection lost - reconnecting...<br><small style="opacity:.75">Your seat is kept for a couple of minutes (a bot plays for you meanwhile).</small>'; document.body.append(lostEl);
+});
+net.on('back', () => {
+  lostEl?.remove(); lostEl = null; if (mg) { try { mg.inst?.cleanup(); } catch {} mg = null; $('hud').innerHTML = ''; lock(); } hideVote(); hideGate();     // whatever minigame was running locally has moved on without us
+  net.send('hello', { name: myName(), ...look }); toast('Reconnected!', 2500);
+});
+net.on('closed', () => { lostEl?.remove(); lostEl = null; alert('Lost the connection to the host.'); location.reload(); });
 // ---- client-side
 net.on('lobby', d => { if (d && me && d[me]) hideWait(); setPlayers(d); });
 net.on('snap', d => { if (!net.isHost && !board.active && !mg && !podium) applySnap(world, d); });

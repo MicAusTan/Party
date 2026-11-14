@@ -3,10 +3,12 @@ import { sfx } from '../sfx.js';
 import { scoreboard, jit, mix } from './util.js';
 import { stage } from './stage.js';
 // Color Connect (a Flow-style puzzle race): join every pair of same-coloured dots with a path. Paths can't cross - drawing over another path cuts it.
-// Everyone gets the same seeded puzzle (it is generated from solved paths, so it always has a solution). Fastest to connect all pairs wins.
-const PAL = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#ff8c1a', '#1abc9c', '#fd79a8', '#a0522d'];
+// Everyone gets the same seeded puzzle. Normal/Hard: solved when every pair is joined. Insane/Extreme (FILL): the puzzle is made by cutting ONE random
+// path that visits every square into K pieces, so a full-board solution always exists, and it is only solved when every pair is joined AND every square is covered.
+const PAL = ['#e74c3c', '#3498db', '#2ecc71', '#f1c40f', '#9b59b6', '#ff8c1a', '#1abc9c', '#fd79a8', '#a0522d', '#ecf0f1', '#c6ff00', '#5b6cff'];
 const nb = (i, G) => { const x = i % G, y = i / G | 0, o = []; if (x > 0) o.push(i - 1); if (x < G - 1) o.push(i + 1); if (y > 0) o.push(i - G); if (y < G - 1) o.push(i + G); return o; };
-function makePuzzle(r, G, minE, maxE) {
+// Normal / Hard: the ORIGINAL generator (random paths, board need not be full). Insane / Extreme: makePuzzle below (always a full-board solution).
+function makePuzzleLoose(r, G, minE, maxE) {
   for (let tries = 0; tries < 80; tries++) {
     const owner = Array(G * G).fill(-1), ends = []; const order = [...Array(G * G).keys()].sort(() => r() - .5);
     for (const s of order) {
@@ -18,13 +20,25 @@ function makePuzzle(r, G, minE, maxE) {
   }
   return Array.from({ length: minE }, (_, y) => [y * G, y * G + G - 1]);     // fallback (always solvable: straight rows)
 }
+function makePuzzle(r, G, K) {                                   // -> [[endA, endB], ...] (K pairs); the pieces of a random Hamiltonian path tile the whole G x G board
+  const N = G * G, path = []; for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) path.push(y * G + (y % 2 ? G - 1 - x : x));   // start: a snake
+  for (let it = 0; it < N * 40; it++) {                           // "backbite" shuffles keep it a single path through every cell
+    if (r() < .5) path.reverse();
+    const head = path[N - 1], c = nb(head, G).filter(i => i !== path[N - 2]); if (!c.length) continue;
+    for (let a = path.indexOf(c[r() * c.length | 0]) + 1, b = N - 1; a < b; a++, b--) { const t = path[a]; path[a] = path[b]; path[b] = t; }
+  }
+  const minL = 3, len = Array(K).fill(minL); for (let left = N - K * minL; left > 0; left--) len[r() * K | 0]++;
+  const ends = []; let off = 0; for (const L of len) { ends.push([path[off], path[off + L - 1]]); off += L; }
+  for (let i = ends.length - 1; i > 0; i--) { const j = r() * (i + 1) | 0, t = ends[i]; ends[i] = ends[j]; ends[j] = t; }   // shuffle colour order
+  return ends;
+}
 export default {
-  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '1 puzzle, 5x5.', def: true }, { n: 'Hard', m: 1.5, pen: 1, d: '2 puzzles in a row, 6x6, more colours.' }, { n: 'Insane', m: 2, pen: 3, d: '3 puzzles in a row, 7x7, even more colours.' }],
-  emotes: false, name: 'Color Connect', desc: 'Connect each pair of same-coloured dots by dragging a path between them. Paths cannot cross - drawing over another path cuts it. Fastest to connect every pair wins!',
+  tiers: [{ n: 'Normal', m: 1, pen: 0, d: '1 puzzle, 5x5.', def: true }, { n: 'Hard', m: 1.5, pen: 1, d: '2 puzzles in a row, 6x6, more colours.' }, { n: 'Insane', m: 2, pen: 3, d: '3 puzzles in a row, 7x7, even more colours. Every square must be filled.' }, { n: 'Extreme', m: 2.5, pen: 4, d: '5 puzzles in a row, 8x8, up to 10 colours. Every square must be filled. Long!' }],
+  emotes: false, name: 'Color Connect', desc: 'Connect each pair of same-coloured dots by dragging a path between them. Paths cannot cross - drawing over another path cuts it. On Insane and Extreme every square must end up covered too! Fastest to solve wins.',
   create(ctx) {
-    const D = ctx.diff ?? 0, G = [5, 6, 7][D], R = [1, 2, 3][D], puzzles = Array.from({ length: R }, () => makePuzzle(ctx.rng, G, [4, 5, 6][D], [7, 8, 9][D])), CP = Math.max(26, Math.min(G > 5 ? 48 : 56, Math.floor((innerHeight * .62 - 70) / G) - 3));
+    const D = Math.max(0, Math.min(3, ctx.diff ?? 0)), G = [5, 6, 7, 8][D], R = [1, 2, 3, 5][D], KMIN = [4, 5, 6, 8][D], KMAX = [7, 8, 9, 10][D], FILL = D >= 2, puzzles = Array.from({ length: R }, () => FILL ? makePuzzle(ctx.rng, G, KMIN + (ctx.rng() * (KMAX - KMIN + 1) | 0)) : makePuzzleLoose(ctx.rng, G, KMIN, KMAX)), CP = Math.max(26, Math.min(G > 5 ? 48 : 56, Math.floor((innerHeight * .62 - 70) / G) - 3));
     let rd = 0, ends = puzzles[0], K = ends.length; const ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, W = ctx.world;
-    const sb = scoreboard(ctx, { timeout: [80, 170, 300][D], bot: s => { const T = jit(mix(55, 20, s), .2) * [1, 2.4, 4.2][D]; return { v: Math.round(T * 1000), t: T }; } });
+    const sb = scoreboard(ctx, { timeout: [80, 170, 300, 540][D], bot: s => { const T = jit(mix(55, 20, s), .2) * [1, 2.4, 4.2, 8.5][D]; return { v: Math.round(T * 1000), t: T }; } });
     let dotAt, paths, cellOf, cur = -1, time = 0, done = false;
     const S = stage(ctx, { sky: 0x1b2a49, fog: { color: 0x1b2a49, near: 30, far: 70 }, light: 1, sun: { intensity: .9, pos: [3, 14, 8] }, cam: { pos: [0, 5, 13], look: [0, 3, 0] }, camFrom: [0, 9, 21], camT: 1.4 });
     S.cyl(40, 40, .5, 0x16203a, 0, -.5, 0, { seg: 40 });
@@ -66,7 +80,7 @@ export default {
       const o = cellOf[i]; if (o >= 0 && o !== cur) { const q = paths[o]; paths[o] = q.slice(0, q.indexOf(i)); }
       p.push(i); const ok = refresh(); sfx('step'); if (dotAt[i] === cur) { sfx('coin'); W.popIcon(me, '✨'); }
       sb.prog((rd + ok / K) / R);
-      if (ok >= K && !done) {
+      if (ok >= K && (!FILL || cellOf.every(c => c >= 0)) && !done) {      // solved = every pair joined (+ every square covered on Insane/Extreme)
         cur = -1; sfx('win'); W.hop(me, .5);
         if (rd + 1 < R) { rd++; loadRound(); refresh(); sb.prog(rd / R); return true; }
         done = true; sb.report(Math.round(time * 1000)); W.emote(me, 'cheer');
@@ -86,7 +100,7 @@ export default {
     grid.addEventListener('pointerdown', down); addEventListener('pointermove', move); addEventListener('pointerup', up);
     refresh();
     return {
-      update(dt) { if (!done) time += dt; sb.tick(dt); const ok = paths.filter((_, c) => connected(c)).length; s.textContent = done ? `Solved in ${time.toFixed(1)}s - waiting for others...` : `${time.toFixed(1)}s   ${R > 1 ? 'Puzzle ' + (rd + 1) + '/' + R + '   ' : ''}Connected ${ok}/${K}`; },
+      update(dt) { if (!done) time += dt; sb.tick(dt); const ok = paths.filter((_, c) => connected(c)).length; s.textContent = done ? `Solved in ${time.toFixed(1)}s - waiting for others...` : `${time.toFixed(1)}s   ${R > 1 ? 'Puzzle ' + (rd + 1) + '/' + R + '   ' : ''}Connected ${ok}/${K}${FILL ? `   Filled ${cellOf.filter(c => c >= 0).length}/${G * G}${ok >= K ? '  - fill every square!' : ''}` : ''}`; },
       endNow() { sb.endNow(); },
       onMessage(m, from) { sb.onMessage(m, from); },
       cleanup() { removeEventListener('pointermove', move); removeEventListener('pointerup', up); el.remove(); S.cleanup(); },

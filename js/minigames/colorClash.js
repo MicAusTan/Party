@@ -4,14 +4,15 @@ import { scoreboard, jit, mix } from './util.js';
 import { stage, fitDist } from './stage.js';
 import { share, nameplate } from './kit.js';
 // Click (or press 1-4) the INK COLOR of the word, not what it says! +1 correct, -1 wrong. 20 seconds. (HUD buttons are unchanged.)
-// Set: a neon stage. A huge board shows your current word; four glowing floor pads match the four colours. Every answer anyone
+// Set: a neon stage. The WORD is only shown in the HUD next to the buttons; the big board shows the countdown and your 5-in-a-row streak
+// (it used to repeat the word, which was redundant). Four glowing floor pads match the four colours. Every answer anyone
 // gives lights its pad (green ring = right, red = wrong) and makes that player hop (or flinch), with live scores over their heads.
 const COLS = [['RED', '#e74c3c'], ['BLUE', '#3498db'], ['GREEN', '#2ecc71'], ['YELLOW', '#f1c40f']], HEX = [0xe74c3c, 0x3498db, 0x2ecc71, 0xf1c40f];
 export default {
   name: 'Color Clash', desc: 'Click (or press 1-4) the INK COLOR of the word, not what it says! +1 correct, -1 wrong, and 5 right in a row gives a +1 bonus. 20 seconds.',
   create(ctx) {
     const sb = scoreboard(ctx, { timeout: 30, lower: false, bot: s => ({ v: Math.round(jit(mix(5, 26, s), .2)), t: 20 }) }), rounds = Array.from({ length: 80 }, () => { const w = ctx.rng() * 4 | 0; return { w, c: ctx.rng() < .8 ? (w + 1 + (ctx.rng() * 3 | 0)) % 4 : w }; });
-    let streak = 0, i = 0, score = 0, time = 0, done = false, shown = -2;
+    let streak = 0, i = 0, score = 0, time = 0, done = false, shown = '';
     const W = ctx.world, ids = Object.keys(ctx.players), n = ids.length, me = ctx.me, st = {}, np = {}; ids.forEach(id => st[id] = 0);
     const el = document.createElement('div'); el.className = 'mg';
     el.innerHTML = '<h3 id="s"></h3><h2 id="w"></h2><div>' + COLS.map((c, k) => `<button data-k="${k}" style="background:${c[1]};width:60px;height:44px;margin:3px">${k + 1}</button>`).join('') + '</div>'; ctx.hud.append(el);
@@ -24,7 +25,16 @@ export default {
     for (let k = -6; k <= 6; k++) S.box(.08, .03, 40, k % 2 ? 0xff4dd8 : 0x4dd0e1, k * 2.2, .02, -8, { basic: true });                     // neon floor lines
     for (let k = 0; k < 9; k++) S.box(1.6, 8 + k % 3 * 2, .3, HEX[k % 4], (k - 4) * 3.4, 0, -9, { em: (HEX[k % 4] >> 1) & 0x7f7f7f });     // light bars
     const board = S.screen(8.4, 2.5, 512, 150); board.mesh.position.set(0, 7.6, -3);
-    const drawBoard = () => { const r = rounds[Math.min(i, rounds.length - 1)]; board.draw((c, bw, bh) => { c.fillStyle = '#05030f'; c.fillRect(0, 0, bw, bh); c.strokeStyle = '#ff4dd8'; c.lineWidth = 8; c.strokeRect(6, 6, bw - 12, bh - 12); c.textAlign = 'center'; c.font = 'bold 104px sans-serif'; c.fillStyle = done ? '#fff' : COLS[r.c][1]; c.fillText(done ? 'DONE!' : COLS[r.w][0], bw / 2, 112); }); };
+    const drawBoard = () => {
+      const left = Math.max(0, Math.ceil(20 - time)), sk = streak % 5;
+      board.draw((c, bw, bh) => {
+        c.fillStyle = '#05030f'; c.fillRect(0, 0, bw, bh); c.strokeStyle = '#ff4dd8'; c.lineWidth = 8; c.strokeRect(6, 6, bw - 12, bh - 12); c.textAlign = 'center';
+        if (done) { c.font = 'bold 104px sans-serif'; c.fillStyle = '#fff'; c.fillText('DONE!', bw / 2, 112); return; }
+        c.font = 'bold 100px sans-serif'; c.fillStyle = left <= 5 ? '#ff6b6b' : '#fff'; c.fillText(left + 's', bw * .27, 114);
+        for (let k = 0; k < 5; k++) { c.fillStyle = k < sk ? '#ffd23f' : '#2a2144'; c.beginPath(); c.arc(bw * .56 + k * 38, 74, 14, 0, 6.283); c.fill(); }
+        c.font = 'bold 22px sans-serif'; c.fillStyle = '#ff9ad9'; c.fillText('5 IN A ROW = +1', bw * .56 + 76, 122);
+      });
+    };
     const pads = COLS.map((_, k) => S.cyl(1.55, 1.65, .22, HEX[k], (k - 1.5) * 3.9, 0, 3.4, { em: (HEX[k] >> 1) & 0x7f7f7f }));
     const rings = pads.map(p => { const m = new THREE.Mesh(new THREE.RingGeometry(.9, 1, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(p.position.x, .3, p.position.z); m.userData.t = 0; S.root.add(m); return m; });
     const gap = Math.min(2.6, 14 / n);
@@ -38,7 +48,7 @@ export default {
     drawWall();
     const lightPad = (k, ok) => { const r = rings[k & 3]; r.userData.t = .45; r.material.color.setHex(ok ? 0x2ecc71 : 0xe74c3c); };
     S.anim(dt => {
-      if (shown !== i + (done ? 100 : 0)) { shown = i + (done ? 100 : 0); drawBoard(); }
+      const bk = (done ? 'x' : Math.ceil(20 - time)) + '|' + streak % 5; if (shown !== bk) { shown = bk; drawBoard(); }
       if (wdirty) { wdirty = false; drawWall(); }
       rings.forEach(r => { r.userData.t = Math.max(0, r.userData.t - dt); const u = 1 - r.userData.t / .45; r.scale.setScalar(.7 + u * 1.6); r.material.opacity = r.userData.t > 0 ? r.userData.t / .45 : 0; });
       ids.forEach(id => np[id].set(String(id === me ? score : st[id])));

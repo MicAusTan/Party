@@ -520,7 +520,13 @@ export class World {
   popIcon(id, ch) {
     const e = this.m.get(id); if (!e) return;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.icon(ch), transparent: true, depthTest: false })); sp.renderOrder = 5; sp.scale.set(.01, .01, 1); this.scene.add(sp);
-    (this.pops ??= []).push({ sp, e, t: 0 });
+    (this.pops ??= []).push({ sp, e, t: 0, dy: this.pops.filter(q => q.e === e).length * .9 });          // dy: several pops on one player stack instead of overlapping
+  }
+  popText(id, txt, col = '#fff') {   // floating text above a player's head (e.g. "+3 🪙"), cached textures, same rise-and-fade as popIcon
+    const e = this.m.get(id); if (!e) return; this.tx ??= new Map(); const key = txt + '|' + col; let t = this.tx.get(key);
+    if (!t) { const cv = document.createElement('canvas'); cv.width = 320; cv.height = 96; const c = cv.getContext('2d'); c.font = 'bold 60px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round'; c.lineWidth = 12; c.strokeStyle = '#000d'; c.strokeText(txt, 160, 52); c.fillStyle = col; c.fillText(txt, 160, 52); t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; this.tx.set(key, t); }
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false })); sp.renderOrder = 6; sp.scale.set(.01, .01, 1); this.scene.add(sp);
+    (this.pops ??= []).push({ sp, e, t: 0, asp: 320 / 96, dy: this.pops.filter(q => q.e === e).length * .9 });
   }
   resetPose(id) {
     const e = this.m.get(id); if (!e) return;
@@ -541,7 +547,7 @@ export class World {
     this.cam.lookAt(this.camLook);
     if (this.pops?.length) for (let i = this.pops.length - 1; i >= 0; i--) {
       const q = this.pops[i]; q.t += dt; const u = Math.min(1, q.t * 6), sc = 1.3 * (u < 1 ? 1 + 2.7 * Math.pow(u - 1, 3) + 1.7 * Math.pow(u - 1, 2) : 1);
-      q.sp.position.set(q.e.g.position.x, q.e.g.position.y + 3 + q.t * .7, q.e.g.position.z); q.sp.scale.set(sc, sc, 1);
+      q.sp.position.set(q.e.g.position.x, q.e.g.position.y + 3 + (q.dy || 0) + q.t * .7, q.e.g.position.z); q.sp.scale.set(sc * (q.asp || 1), sc, 1);
       q.sp.material.opacity = Math.min(1, (1.7 - q.t) * 3);
       if (q.t >= 1.7) { this.scene.remove(q.sp); q.sp.material.dispose(); this.pops.splice(i, 1); }
     }

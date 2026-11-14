@@ -17,7 +17,8 @@ const rand = n => Math.random() * n | 0;
 
 export class Board {
   constructor(o) {
-    this.o = o; this.active = false; this.s = null; this.objs = []; this.anims = []; this.monT = null; this.mon = null; this.hot = []; this.mapView = false; this.undo = null; this.camInit = false; this.starY = 0;
+    this.o = o; this.active = false; this.s = null; this.objs = []; this.anims = []; this.monT = null; this.mon = null; this.hot = []; this.mapView = false; this.undo = null; this.camInit = false; this.starY = 0; this.feed = []; this.hist = false; this.frame = null; this.alsoSeen = 0; this.pushN = 0; this.alsoN = 0;
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && this.tt0) { document.title = this.tt0; this.tt0 = null; } });     // undo the "YOUR TURN" tab title
     o.net.on('board', d => this.apply(d));
     o.net.on('roll', (_, from) => this.roll(from));
     o.net.on('act', (d, from) => this.act(from, d));
@@ -31,6 +32,7 @@ export class Board {
       else if (b.dataset.a === 'skiproll') this.skipAny();
       else if (b.dataset.a === 'hide') { this.hideUI = !this.hideUI; this.render(); }
       else if (b.dataset.a === 'guide') { this.showGuide = !this.showGuide; this.render(); }
+      else if (b.dataset.a === 'hist') { this.hist = !this.hist; this.render(); }
       else if (b.dataset.a) o.net.isHost ? this.act('host', { a: b.dataset.a, k: b.dataset.k }) : o.net.send('act', { a: b.dataset.a, k: b.dataset.k });
     };
   }
@@ -71,7 +73,15 @@ export class Board {
     this.safe('star', () => { const [sx, sz] = B.spot(d.star); this.star.position.x = sx; this.star.position.z = sz; this.starY = B.y(d.star); if (d.mon >= 0 && this.mon) this.monT = [...B.spot(d.mon), B.y(d.mon)]; });
     this.hot = d.hot || [];
     this.safe('sky', () => this.o.world.setSky(B.sky ? (B.skyFixed ?? (Math.min(d.round, d.rounds) - 1) / Math.max(1, d.rounds - 1)) : null));
-    if (pv) this.safe('fx', () => this.diff(pv, d)); this.prev = JSON.parse(JSON.stringify(d));
+    if (pv) this.safe('fx', () => this.diff(pv, d));
+    this.safe('feed', () => {      // the event feed: every client builds it from the log line (+ any extra lines the host attached to this update)
+      const cur = d.order[d.turn];
+      if (!pv) { this.feed = []; this.alsoSeen = Math.max(0, ...(d.also || []).map(x => x.k)); this.addFeed(d.log, cur); }
+      else { (d.also || []).forEach(x => { if (x.k > this.alsoSeen) { this.alsoSeen = x.k; this.addFeed(x.m, cur); } }); if (d.log !== pv.log) this.addFeed(d.log, cur); }
+    });
+    this.safe('card', () => { if (pv && d.ev && d.ev.i !== pv.ev?.i) this.showCard(d.ev); });
+    this.safe('ping', () => this.turnPing(pv, d));
+    this.prev = JSON.parse(JSON.stringify(d));
     { const live = ['roll', 'choose', 'shop', 'slot', 'target'].includes(d.phase) && d.limit && !this.o.players()[d.order[d.turn]]?.bot; this.tl = live ? d.limit : null; }
     this.safe('hud', () => this.render()); this.safe('change', () => this.o.onChange());
   }
@@ -82,10 +92,11 @@ export class Board {
     if (b.phase === 'moving' && a.phase !== 'moving') f('roll', b.roll);
     for (const id of b.order) {
       if (a.pos[id] !== undefined && a.pos[id] !== b.pos[id] && b.phase === 'moving') { f('step', id); this.o.world.hop(id, .4); }      // every step is a little hop
-      if (a.coins[id] === undefined) continue;
-      if (b.stars[id] > a.stars[id]) { f('star', id); this.o.world.emote(id, 'cheer'); this.o.world.popIcon(id, '⭐'); }
-      else if (b.coins[id] > a.coins[id]) { f('coin', id); this.o.world.popIcon(id, '🪙'); }
-      else if (b.coins[id] < a.coins[id]) { f(b.phase === 'shop' ? 'click' : 'lose', id); if (b.phase !== 'shop') this.o.world.popIcon(id, '💸'); }
+      if (a.coins[id] === undefined) continue; const W = this.o.world, dc = b.coins[id] - a.coins[id];
+      if (b.stars[id] > a.stars[id]) { f('star', id); W.emote(id, 'cheer'); W.popIcon(id, '⭐'); }
+      else if (dc > 0) f('coin', id); else if (dc < 0) f(b.phase === 'shop' ? 'click' : 'lose', id);
+      if (dc) W.popText(id, (dc > 0 ? '+' : '') + dc + ' 🪙', dc > 0 ? '#ffe066' : '#ff7b7b');         // floating amount over whoever it happened to (not just the active player)
+      const na = b.items[id]?.length || 0, oa = a.items[id]?.length || 0; if (na > oa) W.popIcon(id, ITEMS[b.items[id][na - 1]]?.e || '🎁');
     }
     if (b.phase === 'end' && a.phase !== 'end') f('win', b.winner);
     if (b.hot?.length && JSON.stringify(a.hot) !== JSON.stringify(b.hot)) f('erupt');
@@ -129,6 +140,7 @@ export class Board {
     // fork markers: bobbing arrows above each way you can choose
     const arrows = [0, 1, 2].map(() => { const a = add(new THREE.Mesh(new THREE.ConeGeometry(.5, 1.2, 4), std(0xffd93d, { emissive: 0x886600 }))); a.visible = false; return a; });
     anim((dt, t) => { const s = this.s, show = s?.phase === 'choose' && s.opts; arrows.forEach((a, k) => { const o = show ? s.opts[k] : undefined; a.visible = o !== undefined && W.decoOn; if (o !== undefined) { const [x, z] = B.spot(o); a.position.set(x, B.y(o) + 2.7 + Math.sin(t * 5 + k) * .25, z); a.rotation.set(Math.PI, t * 2, 0); } }); });
+    this.starEl = document.createElement('div'); this.starEl.id = 'bstar'; this.starEl.innerHTML = '<span class="arr">➤</span><b></b>'; document.body.appendChild(this.starEl);      // off-screen ⭐ pointer
     // follow camera
     this.camInit = false; const cam = dt => this.camStep(dt); W.anim.push(cam); this.anims.push(cam);
   }
@@ -165,7 +177,7 @@ export class Board {
   }
   teardown() {
     const W = this.o.world;
-    this.prev = null; W.anim = W.anim.filter(f => !this.anims.includes(f)); this.anims = []; this.mon = null; W.setSky(null); this.undo?.(); this.undo = null;
+    this.prev = null; this.feed = []; this.frame = null; this.hist = false; this.starEl?.remove(); this.starEl = null; this.cardEl?.remove(); this.cardEl = null; clearTimeout(this.cardT); W.anim = W.anim.filter(f => !this.anims.includes(f)); this.anims = []; this.mon = null; W.setSky(null); this.undo?.(); this.undo = null;
     this.objs.forEach(m => { W.scene.remove(m); m.traverse(n => { n.geometry?.dispose(); (Array.isArray(n.material) ? n.material : [n.material]).forEach(x => x?.dispose()); }); });
     W.deco = W.deco.filter(o => !this.objs.includes(o)); this.objs = []; this.active = false; this.s = null; this.mapView = false;
     W.setIsland(true); W.resetCam(); for (const e of W.m.values()) { e.ty = undefined; e.by = 0; e.g.position.y = 0; }       // back to the flat lobby
@@ -174,12 +186,17 @@ export class Board {
   // Camera: follows whoever is acting (zooming out at forks to show every way), and shows the whole map between rounds / when V is held on.
   camStep(dt) {
     this.clock(dt);
-    const W = this.o.world, s = this.s; if (!s || !B || W.stageUp > 0) return;
+    const W = this.o.world, s = this.s; if (!s || !B || W.stageUp > 0) { if (this.starEl) this.starEl.style.display = 'none'; return; }
     const tn = Math.tan(W.cam.fov * Math.PI / 360), asp = W.cam.aspect || 16 / 9, b = B.bounds;
     const overview = () => { const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2, d = Math.max((b.x1 - b.x0) / 2 / (tn * asp), (b.z1 - b.z0) / 2 * .85 / tn) * 1.05; return [[cx, d * .8, cz + d * .6], [cx, 0, cz]]; };
     const cur = s.order[s.turn], e = W.m.get(cur), acting = ['roll', 'rolling', 'moving', 'choose', 'shop', 'slot', 'target'].includes(s.phase) && e && !this.mapView;
     let P, L;
-    if (acting) {
+    const fr = !this.mapView && this.frame && performance.now() < this.frame.until && (s.phase === 'resolve' || s.phase === 'duelshow') ? this.frame.ids.map(id => W.m.get(id)).filter(Boolean) : [];
+    if (fr.length) {                                   // something just happened to these players: frame them all (swap, robbery, duel, stomp...)
+      const H = B.cam?.h ?? 9.5, K = B.cam?.back ?? 8, xs = fr.map(m => m.g.position.x), zs = fr.map(m => m.g.position.z), cx = (Math.min(...xs) + Math.max(...xs)) / 2, cz = (Math.min(...zs) + Math.max(...zs)) / 2;
+      const spread = Math.max(...fr.map(m => Math.hypot(m.g.position.x - cx, m.g.position.z - cz))), fy = Math.max(...fr.map(m => m.by || 0));
+      P = [cx, fy + H + spread * .9, cz + K + spread * .7]; L = [cx, fy + .6, cz - 1.2];
+    } else if (acting) {
       const H = B.cam?.h ?? 9.5, K = B.cam?.back ?? 8; let fx = e.g.position.x, fz = e.g.position.z, spread = 0; const fy = e.by || 0;
       if (s.phase === 'choose' && s.opts) { const pts = [[fx, fz], ...s.opts.map(i => B.spot(i))]; const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cz = pts.reduce((a, p) => a + p[1], 0) / pts.length; spread = Math.max(...pts.map(p => Math.hypot(p[0] - cx, p[1] - cz))); fx = cx; fz = cz; }
       P = [fx, fy + H + spread * .9, fz + K + spread * .7]; L = [fx, fy + .6, fz - 1.2];
@@ -188,11 +205,12 @@ export class Board {
     W.camTw = null; const kp = 1 - Math.exp(-dt * 2.4), kl = 1 - Math.exp(-dt * 3.4);
     W.camPos.x += (P[0] - W.camPos.x) * kp; W.camPos.y += (P[1] - W.camPos.y) * kp; W.camPos.z += (P[2] - W.camPos.z) * kp;
     W.camLook.x += (L[0] - W.camLook.x) * kl; W.camLook.y += (L[1] - W.camLook.y) * kl; W.camLook.z += (L[2] - W.camLook.z) * kl;
+    this.safe('starptr', () => this.starPointer());
   }
   render() {
     const el = document.getElementById('board'), s = this.s; el.hidden = !this.active; if (!this.active) return;
     const ps = this.o.players(), cur = s.order[s.turn], me = this.o.net.id, esc = this.o.esc, mine = cur === me;
-    const nm = id => esc(ps[id]?.name ?? '?'), inv = s.items[me] || [], coins = s.coins[me];
+    const nm = id => esc(ps[id]?.name ?? '?'), inv = s.items[me] || [], coins = s.coins[me]; this.sd = me in s.pos ? this.starDist(s.pos[me]) : null;
     let act = '';
     if (mine && s.phase === 'roll') act = '<button id="roll">🎲 Roll (Space)</button>' + inv.filter(k => !ITEMS[k].p).map(k => `<button data-a="use" data-k="${k}">${ITEMS[k].e} Use ${ITEMS[k].n}</button>`).join('');
     if (mine && s.phase === 'shop') act = '<b>🛒 Shop</b>' + (s.stock || []).map(k => { const t = ITEMS[k]; return `<button data-a="buy" data-k="${k}"${coins < t.c || inv.length >= MAXI ? ' disabled' : ''}>${t.e} ${t.n} (${t.c}🪙)<br><small>${t.d}</small></button>`; }).join('') + '<button data-a="leave">Leave shop</button>';
@@ -203,13 +221,59 @@ export class Board {
     if (mine && s.phase === 'choose') act = '<b>🔀 Choose your path</b>' + s.opts.map(k => `<button data-a="go" data-k="${k}">${B.sp[k].label || 'Go this way'}</button>`).join('');
     if (this.o.net.isHost && !mine && ['roll', 'choose', 'shop', 'slot', 'target'].includes(s.phase) && !ps[cur]?.bot) act = `<button data-a="force">⏩ ${s.phase === 'roll' ? 'Roll for' : 'Skip'} ${nm(cur)}</button>`;     // host override: nobody has to wait for an AFK player
     this.drawGuide(); if (this.hideUI) { el.innerHTML = '<button class="ghost mini" data-a="hide">Show board ▸</button>'; return; }
-    el.innerHTML = '<span class="bbtns"><button class="ghost mini" data-a="guide">Guide</button><button class="ghost mini" data-a="hide">Hide</button></span>' + `<b>${B.name} · Round ${Math.min(s.round, s.rounds)} / ${s.rounds}</b>${B.sp.some(p => p.type === 'jackpot') ? ' · 💰 Jackpot ' + (s.pot ?? 0) : ''} <small style="opacity:.7">[V] ${this.mapView ? 'follow player' : 'map view'}</small>` + (this.tl != null ? ` <b>⏱ <span id="tl">${Math.max(0, Math.ceil(this.tl))}</span>s</b>` : '') +
+    el.innerHTML = '<span class="bbtns"><button class="ghost mini" data-a="hist">' + (this.hist ? 'Latest' : 'History') + '</button><button class="ghost mini" data-a="guide">Guide</button><button class="ghost mini" data-a="hide">Hide</button></span>' + `<b>${B.name} · Round ${Math.min(s.round, s.rounds)} / ${s.rounds}</b>${B.sp.some(p => p.type === 'jackpot') ? ' · 💰 Jackpot ' + (s.pot ?? 0) : ''} <small style="opacity:.7">[V] ${this.mapView ? 'follow player' : 'map view'}</small>` + (this.tl != null ? ` <b>⏱ <span id="tl">${Math.max(0, Math.ceil(this.tl))}</span>s</b>` : '') +
       s.order.map(id => `<div style="color:${ps[id]?.color}">${id === cur && (s.phase === 'roll' || s.phase === 'shop' || s.phase === 'choose' || s.phase === 'slot') ? '▶ ' : ''}${nm(id)} 🪙${s.coins[id]} ⭐${s.stars[id]} ${(s.items[id] || []).map(k => ITEMS[k].e).join('')}</div>`).join('') +
-      `<div>${s.log}</div>` + (s.phase === 'end' ? `<h3>🏆 ${nm(s.winner)} wins!</h3>` : '') + act +
+      (me in s.pos && s.phase !== 'end' ? `<div class="stl">⭐ ${this.sd == null ? 'star: ?' : this.sd === 0 ? 'the star is on your space!' : this.sd + ' space' + (this.sd === 1 ? '' : 's') + ' to the star'}${coins >= 20 ? ' · you can afford it!' : ' · need ' + (20 - coins) + ' more 🪙'}</div>` : '') + this.feedHtml(ps) + (s.phase === 'end' ? `<h3>🏆 ${nm(s.winner)} wins!</h3>` + this.awards(ps) : '') + act +
       extra;
+    const fh = el.querySelector?.('.fhist'); if (fh) fh.scrollTop = 1e9;
+  }
+  // ---- feed / cards / pointer (every client)
+  addFeed(m, id) { if (!m) return; const f = (this.feed ??= []); f.push({ m, id, r: this.s?.round }); if (f.length > 60) f.shift(); }
+  feedHtml(ps) {
+    const f = this.feed || [], col = id => ps[id]?.color || '#fff';
+    if (this.hist) { let r = null, h = ''; for (const x of f.slice(-40)) { if (x.r !== r) { r = x.r; h += `<div class="fr">- Round ${Math.min(x.r || 1, this.s.rounds)} -</div>`; } h += `<div class="fl" style="border-color:${col(x.id)}">${x.m}</div>`; } return `<div class="fhist">${h}</div>`; }
+    const last = f.slice(-4); return `<div class="feed">${last.map((x, i) => `<div class="fl" style="border-color:${col(x.id)};opacity:${(.5 + .5 * (i + 1) / last.length).toFixed(2)}">${x.m}</div>`).join('')}</div>`;
+  }
+  awards(ps) {            // end-of-game fun stats (the host counts them in s.stat)
+    const st = this.s.stat || {}, esc = this.o.esc, defs = [['stolen', '🦹', 'Master thief', 'coins taken from rivals'], ['robbed', '😭', 'Favourite victim', 'coins lost to rivals'], ['blocked', '🛡️', 'Untouchable', 'attacks blocked'], ['mg', '🎮', 'Minigame champ', 'minigame wins']];
+    const out = defs.map(([k, e, t, u]) => { let best = null, bv = 0; for (const id of this.s.order) { const v = st[id]?.[k] || 0; if (v > bv) { bv = v; best = id; } } return best ? `<div class="aw">${e} <b>${t}</b>: ${esc(ps[best]?.name ?? '?')} (${bv} ${u})</div>` : ''; }).join('');
+    return out ? '<div class="lbl">Awards</div>' + out : '';
+  }
+  showCard(ev, ms = 2600) {   // big centre-screen banner for the moments that matter (star bought, robbery, swap, duel, jackpot...)
+    const c = ev.c || '#ffd93d'; if (ev.ids !== undefined) this.frame = ev.ids.length ? { ids: ev.ids, until: performance.now() + ms } : null;
+    this.cardEl?.remove(); clearTimeout(this.cardT);
+    const d = document.createElement('div'); d.id = 'bcard'; d.style.cssText = `border-color:${c};box-shadow:0 0 34px ${c}88`;
+    d.innerHTML = `<div class="e">${ev.e || ''}</div><div class="h">${ev.h || ''}</div>${ev.sub ? `<div class="s">${ev.sub}</div>` : ''}`; document.body.appendChild(d); this.cardEl = d;
+    this.cardT = setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 450); }, ms - 450);
+  }
+  turnPing(pv, d) {         // it is YOUR turn: sound + banner + (if the tab is in the background) the tab title
+    const me = this.o.net.id; if (!pv || d.phase !== 'roll' || d.order[d.turn] !== me || (pv.phase === 'roll' && pv.order[pv.turn] === me)) return;
+    this.o.fx?.('ding'); this.showCard({ e: '🎲', h: 'Your turn!', sub: 'Roll the dice (Space)', c: '#4aa3ff' }, 1500);
+    if (document.hidden) { this.tt0 ??= document.title; document.title = '🎲 YOUR TURN!'; }
+  }
+  starDist(from) {          // fewest spaces from `from` to the star, following the board's one-way paths
+    const s = this.s; if (from == null || s?.star == null) return null; const seen = new Map([[from, 0]]), q = [from];
+    while (q.length) { const c = q.shift(), dd = seen.get(c); if (c === s.star) return dd; for (const n of B.sp[c].next) if (!seen.has(n)) { seen.set(n, dd + 1); q.push(n); } }
+    return null;
+  }
+  starPointer() {           // when the ⭐ is off-screen: an arrow on the screen edge pointing at it, with the distance
+    const W = this.o.world, el = this.starEl, s = this.s; if (!el) return;
+    if (!s || s.phase === 'end' || this.hideUI || !this.star) { el.style.display = 'none'; return; }
+    const v = this.star.position.clone().project(W.cam), behind = v.z > 1; let x = behind ? -v.x : v.x, y = behind ? -v.y : v.y;
+    if (!behind && Math.abs(x) < .92 && Math.abs(y) < .88) { el.style.display = 'none'; return; }
+    const m = Math.max(Math.abs(x) / .92, Math.abs(y) / .84, 1e-3); x /= m; y /= m;
+    el.style.display = 'flex'; el.style.left = ((x * .5 + .5) * innerWidth) + 'px'; el.style.top = ((-y * .5 + .5) * innerHeight) + 'px';
+    el.firstChild.style.transform = `rotate(${Math.atan2(-y, x)}rad)`; el.lastChild.textContent = '⭐ ' + (this.sd ?? '');
   }
   // ---- host only
-  push() { this.apply(this.s); this.o.net.broadcast('board', this.s); this.safe('bot', () => this.botTurn()); }
+  ev(e, h, sub = '', ids = [], c = '#ffd93d') { const s = this.s; s.ev = { i: (s.ev?.i || 0) + 1, e, h, sub, ids, c }; }       // a "big moment" every client shows as a card (and frames with the camera)
+  also(m) { const s = this.s; if (s.alsoP !== this.pushN) { s.also = []; s.alsoP = this.pushN; } s.also.push({ k: ++this.alsoN, m }); }      // an extra feed line for events that would overwrite each other in s.log
+  stat(id, k, n = 1) { const t = (this.s.stat ??= {}), o = (t[id] ??= {}); o[k] = (o[k] || 0) + n; }
+  beat(i0, ms = 1900) {     // if this turn produced a big moment, let everyone see it before the next player is up
+    const s = this.s; if ((s.ev?.i || 0) > i0) { s.phase = 'resolve'; this.push(); return this.later(() => { if (this.active && s.phase === 'resolve') this.nextTurn(); }, ms); }
+    this.nextTurn();
+  }
+  push() { this.pushN++; this.apply(this.s); this.o.net.broadcast('board', this.s); this.safe('bot', () => this.botTurn()); }
   drawGuide() {           // the "what does each square do" sheet (it used to be a long legend under the board panel)
     let gd = document.getElementById('guide'); if (!gd) { gd = document.createElement('div'); gd.id = 'guide'; gd.className = 'box'; gd.hidden = true; document.body.appendChild(gd); gd.onclick = e => { if (e.target.closest('[data-g]')) { this.showGuide = false; gd.hidden = true; } }; }
     gd.hidden = !this.showGuide || !this.active; if (gd.hidden || !B) return;
@@ -252,7 +316,7 @@ export class Board {
   stepTo(id, to, left) {
     const s = this.s, me = this.name(id); s.pos[id] = to;
     if (B.type(to) === 'toll') { const n = Math.min(3, s.coins[id]); s.coins[id] -= n; s.log = `${me} paid the bridge toll: -${n} 🪙`; }
-    if (to === s.star && s.coins[id] >= 20) { s.coins[id] -= 20; s.stars[id]++; s.star = this.newStar(to); s.log = `${me} bought a ⭐!`; }
+    if (to === s.star && s.coins[id] >= 20) { if (B.type(to) === 'toll') this.also(s.log); s.coins[id] -= 20; s.stars[id]++; s.star = this.newStar(to); s.log = `${me} bought a ⭐!`; this.stat(id, 'stars'); this.ev('⭐', `${me} bought a Star!`, '-20 🪙 · the ⭐ moved to a new space', [id], '#ffd93d'); }
     this.push(); this.later(() => this.walk(id, left - 1), 400);
   }
   newStar(cur) { const l = B.starSpots.filter(i => i !== cur); return l[rand(l.length)]; }
@@ -267,12 +331,13 @@ export class Board {
     const s = this.s; if (s.mon < 0) return '';
     for (let i = 0; i < 5; i++) s.mon = B.sp[s.mon].next[0];
     const hit = s.order.filter(id => s.pos[id] === s.mon); if (!hit.length) return '👹 The Wanderer lurks... ';
+    this.ev('👹', 'The Wanderer stomps!', hit.map(id => this.name(id)).join(', '), hit, '#9b59b6');
     return `👹 The Wanderer stomped ${hit.map(id => this.guard(id) ? `${this.name(id)} (🛡️ blocked)` : `${this.name(id)} (${this.addCoins(id, -5)} 🪙)`).join(', ')}! `;
   }
   land(id) {
     const s = this.s; if (!this.active) return;
-    const t = B.type(s.pos[id]), me = this.name(id);
-    if (s.hot?.includes(s.pos[id])) { const n = this.addCoins(id, -(B.hazard?.dmg || 6)); s.log = `🔥 ${me} landed on scorching lava! ${n} 🪙`; return this.nextTurn(); }
+    const t = B.type(s.pos[id]), me = this.name(id), i0 = s.ev?.i || 0;
+    if (s.hot?.includes(s.pos[id])) { const n = this.addCoins(id, -(B.hazard?.dmg || 6)); s.log = `🔥 ${me} landed on scorching lava! ${n} 🪙`; this.ev('🔥', `${me} landed on lava!`, `${n} 🪙`, [id], '#ff5a5a'); return this.beat(i0); }
     if (t === 'green') s.log = this.event(id);
     else if (t === 'duel') { if (this.askTarget(id, 'duel')) return; s.log = `${me} found no one to duel.`; }
     else if (t === 'shop') s.log = `${me} entered the shop`;
@@ -291,16 +356,17 @@ export class Board {
     else if (t === 'vent') s.log = this.vent(id);
     else if (t === 'thief') { if (this.askTarget(id, 'thief')) return; s.log = this.thief(id); }
     else if (t === 'swap') { if (this.askTarget(id, 'swap')) return; s.log = this.swapPlaces(id); }
-    else if (t === 'warp') { const o = B.warps.find(k => k !== s.pos[id]); s.pos[id] = o; s.log = `${me} was warped across the island!`; }
+    else if (t === 'warp') { const o = B.warps.find(k => k !== s.pos[id]); s.pos[id] = o; s.log = `${me} was warped across the island!`; this.ev('🌀', `${me} was warped!`, 'across the island', [id], '#00cec9'); }
     else { const d = Math.max(t === 'blue' ? 3 : -3, -s.coins[id]); s.coins[id] += d; s.log = `${me} landed on ${t}: ${d >= 0 ? '+' : ''}${d} 🪙`; }
     if (t === 'shop') { s.stock = Object.keys(ITEMS).sort(() => Math.random() - .5).slice(0, 3); s.phase = 'shop'; return this.push(); }
     if (t === 'slot') { s.phase = 'slot'; return this.push(); }
-    this.nextTurn();
+    this.beat(i0);
   }
   rival(id) { const o = this.s.order.filter(k => k !== id); return o.length ? o[rand(o.length)] : null; }
   fork(id) {             // ♞ a knight's fork: take up to 2 coins from each of two random rivals (shields block)
     const s = this.s, me = this.name(id), rv = s.order.filter(k => k !== id).sort(() => Math.random() - .5).slice(0, 2); if (!rv.length) return `♞ ${me} forks... nobody.`;
-    let got = 0; const out = rv.map(v => { if (this.guard(v)) return `${this.name(v)} 🛡️`; const n = Math.min(2, s.coins[v]); s.coins[v] -= n; got += n; return this.name(v); }); s.coins[id] += got;
+    let got = 0; const out = rv.map(v => { if (this.guard(v)) return `${this.name(v)} 🛡️`; const n = Math.min(2, s.coins[v]); s.coins[v] -= n; got += n; this.stat(v, 'robbed', n); return this.name(v); }); s.coins[id] += got; this.stat(id, 'stolen', got);
+    this.ev('♞', `${me} forks ${out.join(' and ')}!`, `+${got} 🪙`, [id, ...rv], '#b06bff');
     return `♞ ${me} forks ${out.join(' and ')}: +${got} 🪙`;
   }
   bless(id) {            // ♝ the bishop blesses you with a shield (or 3 coins if your bag is full)
@@ -309,19 +375,19 @@ export class Board {
   }
   check(id) {            // ♚ CHECK! take up to 4 coins from the richest rival (a shield blocks it)
     const s = this.s, me = this.name(id), rv = s.order.filter(k => k !== id).sort((a, b) => s.coins[b] - s.coins[a])[0]; if (rv == null) return `♚ ${me} declares check... on nobody.`;
-    if (this.guard(rv)) return `♚ ${me} puts ${this.name(rv)} in check, but 🛡️ blocked it!`;
-    const n = Math.min(4, s.coins[rv]); s.coins[rv] -= n; s.coins[id] += n; return `♚ CHECK! ${me} takes ${n} 🪙 from the richest rival, ${this.name(rv)}.`;
+    if (this.guard(rv)) { this.ev('🛡️', `${this.name(rv)}'s shield blocked it!`, `${me}'s check failed`, [id, rv], '#58d68d'); return `♚ ${me} puts ${this.name(rv)} in check, but 🛡️ blocked it!`; }
+    const n = Math.min(4, s.coins[rv]); s.coins[rv] -= n; s.coins[id] += n; this.stat(id, 'stolen', n); this.stat(rv, 'robbed', n); this.ev('♚', 'CHECK!', `${me} takes ${n} 🪙 from ${this.name(rv)}`, [id, rv], '#ff9f43'); return `♚ CHECK! ${me} takes ${n} 🪙 from the richest rival, ${this.name(rv)}.`;
   }
   roulette(id) {         // 🎡 spin: mostly small wins, sometimes a loss, rarely a big one
-    const s = this.s, me = this.name(id), r = Math.random(), d = r < .08 ? 12 : r < .4 ? 6 : r < .6 ? 0 : r < .9 ? -4 : -8, n = Math.max(d, -s.coins[id]); s.coins[id] += n;
+    const s = this.s, me = this.name(id), r = Math.random(), d = r < .08 ? 12 : r < .4 ? 6 : r < .6 ? 0 : r < .9 ? -4 : -8, n = Math.max(d, -s.coins[id]); s.coins[id] += n; if (n >= 12) this.ev('🎡', 'Roulette JACKPOT!', `${me} wins +${n} 🪙`, [id], '#16a085'); else if (n <= -8) this.ev('🎡', 'Ouch!', `${me} loses ${-n} 🪙`, [id], '#ff5a5a');
     return `🎡 ${me} spins the roulette wheel... ${n > 0 ? 'wins +' + n : n < 0 ? 'loses ' + n : 'the ball lands on zero'}${n ? ' 🪙' : '!'}`;
   }
   jackpot(id) {          // 💰 the shared pot grows every round; whoever lands here takes it all
-    const s = this.s, me = this.name(id), pot = s.pot ?? 0; s.pot = 0; s.coins[id] += pot; return `💰 JACKPOT! ${me} wins the pot: +${pot} 🪙 (it starts growing again)`;
+    const s = this.s, me = this.name(id), pot = s.pot ?? 0; s.pot = 0; s.coins[id] += pot; this.ev('💰', 'JACKPOT!', `${me} wins the pot: +${pot} 🪙`, [id], '#f1c40f'); return `💰 JACKPOT! ${me} wins the pot: +${pot} 🪙 (it starts growing again)`;
   }
   metro(id) {            // 🚇 ride to another metro station
     const s = this.s, me = this.name(id), st = B.sp.map((p, i) => p.type === 'metro' ? i : -1).filter(i => i >= 0 && i !== s.pos[id]); if (!st.length) return `${me} waits for a train that never comes.`;
-    s.pos[id] = st[rand(st.length)]; return `🚇 ${me} rode the metro to another station!`;
+    s.pos[id] = st[rand(st.length)]; this.ev('🚇', `${me} rode the metro!`, 'to another station', [id], '#3498db'); return `🚇 ${me} rode the metro to another station!`;
   }
   forge(id) {            // 🔨 pay 5 coins, get a random item (needs room in the inventory)
     const s = this.s, me = this.name(id), inv = s.items[id] ??= [];
@@ -330,21 +396,21 @@ export class Board {
   }
   vent(id) {             // 🌋 the vent erupts: scorching tiles re-roll, and the ash rains on every rival (-2 each, the lander keeps it)
     const s = this.s, me = this.name(id); let got = 0; const hit = [];
-    for (const v of s.order) { if (v === id) continue; if (this.guard(v)) { hit.push(`${this.name(v)} 🛡️`); continue; } const n = Math.min(2, s.coins[v]); s.coins[v] -= n; got += n; hit.push(this.name(v)); }
-    s.coins[id] += got; const h = this.heat(); return `🌋 ${me} set off an eruption vent! ${h}Ash rains on ${hit.join(', ') || 'nobody'}: +${got} 🪙 for ${me}.`;
+    for (const v of s.order) { if (v === id) continue; if (this.guard(v)) { hit.push(`${this.name(v)} 🛡️`); continue; } const n = Math.min(2, s.coins[v]); s.coins[v] -= n; got += n; this.stat(v, 'robbed', n); hit.push(this.name(v)); }
+    s.coins[id] += got; this.stat(id, 'stolen', got); const h = this.heat(); this.ev('🌋', `${me} set off a vent!`, `Ash rains on everyone: +${got} 🪙 for ${me}`, [...s.order], '#ff5a5a'); return `🌋 ${me} set off an eruption vent! ${h}Ash rains on ${hit.join(', ') || 'nobody'}: +${got} 🪙 for ${me}.`;
   }
   thief(id, v0) {            // 🦹 steal up to 5 coins from a random rival (a shield blocks it)
     const me = this.name(id), v = v0 ?? this.rival(id); if (!v) return `${me} found a thief's den, but nobody to rob.`;
-    if (this.guard(v)) return `${me} tried to rob ${this.name(v)}, but 🛡️ blocked it!`;
-    const n = Math.min(5, this.s.coins[v]); this.s.coins[v] -= n; this.s.coins[id] += n; return `🦹 ${me} robbed ${this.name(v)}! +${n} 🪙`;
+    if (this.guard(v)) { this.ev('🛡️', `${this.name(v)}'s shield blocked it!`, `${me}'s robbery failed`, [id, v], '#58d68d'); return `${me} tried to rob ${this.name(v)}, but 🛡️ blocked it!`; }
+    const n = Math.min(5, this.s.coins[v]); this.s.coins[v] -= n; this.s.coins[id] += n; this.stat(id, 'stolen', n); this.stat(v, 'robbed', n); this.ev('🦹', `${me} robbed ${this.name(v)}!`, `+${n} 🪙 stolen`, [id, v], '#ff6b6b'); return `🦹 ${me} robbed ${this.name(v)}! +${n} 🪙`;
   }
   swapPlaces(id, v0) {       // 🔄 trade places with a random rival (a shield blocks it)
     const s = this.s, me = this.name(id), v = v0 ?? this.rival(id); if (!v) return `${me} stepped on a swap pad, but nobody to swap with.`;
-    if (this.guard(v)) return `${me} tried to swap with ${this.name(v)}, but 🛡️ blocked it!`;
-    [s.pos[id], s.pos[v]] = [s.pos[v], s.pos[id]]; return `🔄 ${me} swapped places with ${this.name(v)}!`;
+    if (this.guard(v)) { this.ev('🛡️', `${this.name(v)}'s shield blocked it!`, `${me}'s swap failed`, [id, v], '#58d68d'); return `${me} tried to swap with ${this.name(v)}, but 🛡️ blocked it!`; }
+    [s.pos[id], s.pos[v]] = [s.pos[v], s.pos[id]]; this.ev('🔄', `${me} swapped places with ${this.name(v)}!`, '', [id, v], '#fd79a8'); return `🔄 ${me} swapped places with ${this.name(v)}!`;
   }
   addCoins(id, n) { const s = this.s; n = Math.max(n, -s.coins[id]); s.coins[id] += n; return n; }
-  guard(v) { const i = this.s.items[v].indexOf('shield'); if (i < 0) return false; this.s.items[v].splice(i, 1); return true; }
+  guard(v) { const i = this.s.items[v].indexOf('shield'); if (i < 0) return false; this.s.items[v].splice(i, 1); this.stat(v, 'blocked'); return true; }
   event(id) {
     const s = this.s, me = this.name(id), C = n => `${n >= 0 ? '+' : ''}${n} 🪙`, keys = Object.keys(ITEMS);
     const evs = [
@@ -352,10 +418,10 @@ export class Board {
       () => `${me} paid taxes. ${C(this.addCoins(id, -4))}`,
       () => `${me} got a bonus! ${C(this.addCoins(id, 5))}`,
       () => { const inv = s.items[id]; if (inv.length >= MAXI) return `${me} found a gift but had no room!`; const k = keys[rand(keys.length)]; inv.push(k); return `${me} found a gift: ${ITEMS[k].e} ${ITEMS[k].n}!`; },
-      () => { s.order.forEach(k => this.addCoins(k, 3)); return 'Festival! Everyone gets +3 🪙'; },
-      () => { s.pos[id] = rand(B.n); return `${me} was teleported!`; },
-      () => { s.star = this.newStar(s.star); return 'The ⭐ was shuffled to a new space!'; },
-      () => this.guard(id) ? `${me}'s 🛡️ stopped a pickpocket!` : `${me} was pickpocketed! ${C(this.addCoins(id, -5))}`,
+      () => { s.order.forEach(k => this.addCoins(k, 3)); this.ev('🎉', 'Festival!', 'Everyone gets +3 🪙', [...s.order], '#f1c40f'); return 'Festival! Everyone gets +3 🪙'; },
+      () => { s.pos[id] = rand(B.n); this.ev('🌀', `${me} was teleported!`, '', [id], '#00cec9'); return `${me} was teleported!`; },
+      () => { s.star = this.newStar(s.star); this.ev('⭐', 'The star moved!', 'Look for the pointer if it is off-screen', [], '#ffd93d'); return 'The ⭐ was shuffled to a new space!'; },
+      () => { if (this.guard(id)) { this.ev('🛡️', `${me}'s shield stopped a pickpocket!`, '', [id], '#58d68d'); return `${me}'s 🛡️ stopped a pickpocket!`; } const t = C(this.addCoins(id, -5)); this.ev('🦹', `${me} was pickpocketed!`, t, [id], '#ff6b6b'); return `${me} was pickpocketed! ${t}`; },
     ];
     return evs[rand(evs.length)]();
   }
@@ -381,12 +447,12 @@ export class Board {
   }
   startDuel(id, v) {      // both players roll a die in front of everyone: "rolling...", then the result, then the coins move
     const s = this.s, me = this.name(id), vn = this.name(v); let a, b, tries = 0; do { a = 1 + rand(6); b = 1 + rand(6); } while (a === b && ++tries < 5);
-    s.phase = 'duelshow'; s.duel = { a: id, b: v, ra: null, rb: null, w: null, n: 0 }; s.log = `⚔️ ${me} vs ${vn}!`; this.push();
+    s.phase = 'duelshow'; s.duel = { a: id, b: v, ra: null, rb: null, w: null, n: 0 }; s.log = `⚔️ ${me} vs ${vn}!`; this.ev('⚔️', `${me} vs ${vn}!`, 'Duel!', [id, v], '#ff9f43'); this.push();
     this.later(() => {
       if (!this.active || s.phase !== 'duelshow') return;
       const d = s.duel; d.ra = a; d.rb = b;
-      if (a === b) s.log = `⚔️ ${me} (${a}) vs ${vn} (${b}): it's a tie!`;
-      else { const [w, l] = a > b ? [id, v] : [v, id], n = Math.min(5, s.coins[l]); s.coins[l] -= n; s.coins[w] += n; d.w = w; d.n = n; s.log = `⚔️ ${me} (${a}) vs ${vn} (${b}): ${this.name(w)} wins ${n} 🪙`; }
+      if (a === b) { s.log = `⚔️ ${me} (${a}) vs ${vn} (${b}): it's a tie!`; this.ev('⚔️', "It's a tie!", `${a} vs ${b}`, [id, v], '#ff9f43'); }
+      else { const [w, l] = a > b ? [id, v] : [v, id], n = Math.min(5, s.coins[l]); s.coins[l] -= n; s.coins[w] += n; d.w = w; d.n = n; this.stat(w, 'stolen', n); this.stat(l, 'robbed', n); s.log = `⚔️ ${me} (${a}) vs ${vn} (${b}): ${this.name(w)} wins ${n} 🪙`; this.ev('⚔️', `${this.name(w)} wins the duel!`, `+${n} 🪙 (${a} vs ${b})`, [id, v], '#ff9f43'); }
       this.push(); this.later(() => { if (this.active && s.phase === 'duelshow') this.nextTurn(); }, 3200);
     }, 1900);
   }
@@ -401,7 +467,7 @@ export class Board {
     if (d.a === 'bet' && s.phase === 'slot' && [3, 6, 10].includes(+d.k) && s.coins[id] >= +d.k) {
       const b = +d.k, r = Math.random(), mult = r < .55 ? -1 : r < .85 ? 1 : r < .97 ? 2 : 5, p = ['🍒', '🍋', '🔔', '⭐', '7️⃣'].sort(() => Math.random() - .5);
       const reel = mult === 5 ? '7️⃣7️⃣7️⃣' : mult === 2 ? p[0].repeat(3) : mult === 1 ? p[0] + p[0] + p[1] : p[0] + p[1] + p[2];
-      s.coins[id] += b * mult; s.log = `🎰 ${this.name(id)} bet ${b} 🪙 ${reel} → ${mult > 0 ? '+' : ''}${b * mult} 🪙${mult === 5 ? ' JACKPOT!' : ''}`; return this.nextTurn();
+      s.coins[id] += b * mult; s.log = `🎰 ${this.name(id)} bet ${b} 🪙 ${reel} → ${mult > 0 ? '+' : ''}${b * mult} 🪙${mult === 5 ? ' JACKPOT!' : ''}`; const i0 = s.ev?.i || 0; if (mult === 5) this.ev('🎰', 'JACKPOT! 7️⃣7️⃣7️⃣', `${this.name(id)} wins +${b * mult} 🪙`, [id], '#ff2d95'); return this.beat(i0);
     }
     if (d.a === 'skiproll' && s.phase === 'rolling') return this.skipRoll();
     if (d.a === 'target' && s.phase === 'target' && s.pick && ((d.k === 'none' && s.pick.k !== 'duel') || s.pick.opts.includes(d.k))) return this.resolveTarget(id, d.k);
@@ -412,21 +478,21 @@ export class Board {
     if (d.a === 'use' && s.phase === 'roll' && inv.includes(d.k) && !t.p) {
       inv.splice(inv.indexOf(d.k), 1); const me = this.name(id), rivals = s.order.filter(k => k !== id);
       if (d.k === 'steal') { if (this.askTarget(id, 'thief', 'roll')) return; s.log = 'Nobody to steal from!'; }
-      else if (d.k === 'magnet') { s.star = this.ahead(s.pos[id], 5 + rand(4)); s.log = `${me} pulled the ⭐ closer!`; }
+      else if (d.k === 'magnet') { s.star = this.ahead(s.pos[id], 5 + rand(4)); s.log = `${me} pulled the ⭐ closer!`; this.ev('🧲', `${me} pulled the ⭐ closer!`, '', [id], '#ffd93d'); }
       else if (d.k === 'swap') { if (this.askTarget(id, 'swap', 'roll')) return; s.log = 'Nobody to swap with!'; }
       else { s.next[id] = d.k; s.log = `${me} used ${t.n}`; }
       this.push();
     }
   }
   endRound() {
-    const s = this.s; s.turn = 0; s.phase = 'minigame'; s.mega = s.round % 4 === 0 || s.round === s.rounds; if (B.sp.some(p => p.type === 'jackpot')) s.pot = (s.pot ?? 0) + 4; const w = this.wander() + this.heat(); s.log = w + (s.mega ? '⭐ MEGA MINIGAME! The winner earns a star!' : 'Minigame time!'); this.push();
+    const s = this.s; s.turn = 0; s.phase = 'minigame'; s.mega = s.round % 4 === 0 || s.round === s.rounds; if (B.sp.some(p => p.type === 'jackpot')) s.pot = (s.pot ?? 0) + 4; const i0 = s.ev?.i || 0, w1 = this.wander(), w2 = this.heat(), w = w1 + w2; if (w2 && (s.ev?.i || 0) === i0) this.ev('🌋', 'The volcano erupts!', `${B.hazard.count} tiles are scorching hot`, [], '#ff5a5a'); s.log = w + (s.mega ? '⭐ MEGA MINIGAME! The winner earns a star!' : 'Minigame time!'); this.push();
     this.later(() => { if (this.active) this.o.playMg(); }, 2000);
   }
   reward(i) { return this.s?.mega ? [20, 12, 6, 2][i] ?? 0 : REWARD[i] ?? 0; }
   addPlayer(id) {   // late join (host only): slots in at the end of the turn order with the average coin count
     if (!this.active || !this.o.net.isHost) return; const s = this.s;
     if (s.phase === 'end') return this.o.net.sendTo(id, 'board', s);
-    if (s.order.includes(id)) return;
+    if (s.order.includes(id)) return this.o.net.sendTo(id, 'board', s);          // a player coming back after a disconnect: resend the current board
     const cs = s.order.map(k => s.coins[k]), avg = cs.length ? Math.round(cs.reduce((a, c) => a + c, 0) / cs.length) : 10;
     s.order.push(id); s.pos[id] = 0; s.coins[id] = Math.max(10, avg); s.stars[id] = 0; s.items[id] = []; s.next[id] = null;
     s.log = this.name(id) + ' joined the game!'; this.push();
@@ -444,13 +510,17 @@ export class Board {
   rewardFor(id, r, adj, n) { const a = adj?.[id], base = this.reward(r); if (!a) return base; return Math.round(base * (a.m ?? 1)) - (r >= Math.ceil((n || 4) / 2) ? (a.pen || 0) : 0); }
   onMgEnd(pl, rk = pl.map((_, i) => i), adj) {
     if (!this.active || !this.o.net.isHost) return; const s = this.s;
-    pl.forEach((id, i) => { if (id in s.coins) { s.coins[id] = Math.max(0, s.coins[id] + this.rewardFor(id, rk[i], adj, pl.length)); if (s.mega && rk[i] === 0) s.stars[id]++; } });
+    const parts = []; pl.forEach((id, i) => { if (id in s.coins) { const r = this.rewardFor(id, rk[i], adj, pl.length); s.coins[id] = Math.max(0, s.coins[id] + r); if (s.mega && rk[i] === 0) { s.stars[id]++; this.stat(id, 'stars'); } if (rk[i] === 0) this.stat(id, 'mg'); parts.push(`${this.name(id)} ${r >= 0 ? '+' : ''}${r}`); } });
     this.later(() => {
       if (!this.active) return;
-      s.round++; s.mega = false; s.log = 'Minigame rewards paid!';
+      s.round++; s.mega = false; s.log = 'Minigame rewards: ' + parts.join(' · ') + ' 🪙';
       if (s.round > s.rounds) {
         s.phase = 'end'; s.winner = [...s.order].sort((a, b) => s.stars[b] - s.stars[a] || s.coins[b] - s.coins[a])[0]; s.round = s.rounds;
-      } else s.phase = 'roll';
+        this.ev('🏆', `${this.name(s.winner)} wins!`, `⭐ ${s.stars[s.winner]} · 🪙 ${s.coins[s.winner]}`, [s.winner], '#ffd93d');
+      } else {
+        s.phase = 'roll'; const ld = [...s.order].sort((a, b) => s.stars[b] - s.stars[a] || s.coins[b] - s.coins[a])[0];
+        this.ev('🔔', `Round ${s.round} / ${s.rounds}`, `${this.name(ld)} leads: ⭐ ${s.stars[ld]} · 🪙 ${s.coins[ld]}`, [], '#4aa3ff');
+      }
       this.push();
     }, 4500);
   }

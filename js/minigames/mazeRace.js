@@ -28,8 +28,8 @@ export default {
     const cell = {}, off = {}, fin = {}; ids.forEach((id, i) => { cell[id] = 0; const a = i / ids.length * Math.PI * 2; off[id] = [Math.cos(a) * .42, Math.sin(a) * .42]; });
 
     // ---------- the set ----------
-    const dist = fitDist(W, N * CS / 2 + 4.5, 30);
-    let zoom = 1, zt = 0; const wh = e => { zoom = Math.max(.45, Math.min(1.3, zoom * (e.deltaY > 0 ? 1.1 : .91))); }, zk = e => { if (e.code === 'Equal' || e.code === 'NumpadAdd') zoom = Math.max(.45, zoom * .9); if (e.code === 'Minus' || e.code === 'NumpadSubtract') zoom = Math.min(1.3, zoom * 1.1); };
+    const half = N * CS / 2 + 3, tv = Math.tan(W.cam.fov * Math.PI / 360), dist = Math.max(fitDist(W, half + 1.5, 30), half / tv * 1.04);   // fit the maze's WIDTH and HEIGHT (a square maze on a wide screen is limited by its height)
+    const ZMIN = .3, ZMAX = 1.25; let zoom = 1, zt = 0, fx = 0, fz = 0; const wh = e => { zoom = Math.max(ZMIN, Math.min(ZMAX, zoom * (e.deltaY > 0 ? 1.1 : .91))); }, zk = e => { if (e.code === 'Equal' || e.code === 'NumpadAdd') zoom = Math.max(ZMIN, zoom * .9); if (e.code === 'Minus' || e.code === 'NumpadSubtract') zoom = Math.min(ZMAX, zoom * 1.1); };
     addEventListener('wheel', wh, { passive: true }); addEventListener('keydown', zk);
     const S = stage(ctx, { light: 1.15, sun: { intensity: 1.2, pos: [-8, 20, 10] }, cam: { pos: [0, dist * .96, dist * .28], look: [0, 0, .6] }, camFrom: [0, dist * 1.4, dist * .5], camT: 1.4 });
     S.box(120, .3, 120, 0x4f9a45, 0, -.6, 0); S.box(N * CS + 1.2, .3, N * CS + 1.2, 0xe8dcb0, 0, -.3, 0);   // lawn + sandy paths
@@ -49,7 +49,10 @@ export default {
     const ring = S.cyl(.6, .6, .05, ctx.players[me]?.color || '#f1c40f', 0, 0, 0, { basic: true, op: .8, seg: 20 });   // "this is you" ring
     ids.forEach(id => { W.put(id, cx(0) + off[id][0], cz(0) + off[id][1], 0); const e = W.m.get(id); if (e) e.g.scale.setScalar(.62); });
     S.anim(dt => {
-      if ((zt += dt) > 1.6) W.setCam([0, dist * .96 * zoom, dist * .28 * zoom], [0, 0, .6]);
+      if ((zt += dt) > 1.6) {       // full-maze view at zoom 1; zooming in makes the camera follow you (otherwise you walk off-screen)
+        const m0 = W.m.get(me), f = Math.max(0, Math.min(1, (1 - zoom) / .3)), tx = m0 ? m0.g.position.x * f : 0, tz = m0 ? m0.g.position.z * f : 0, k = 1 - Math.exp(-dt * 6);
+        fx += (tx - fx) * k; fz += (tz - fz) * k; W.setCam([fx, dist * .96 * zoom, fz + dist * .28 * zoom], [fx, 0, fz + .6]);
+      }
       tt += dt;
       for (const id of ids) { const e = W.m.get(id); if (!e) continue; if (ctx.players[id]?.bot) cell[id] = route[Math.min(route.length - 1, Math.round(sb.get(id) * (route.length - 1)))]; W.set(id, cx(cell[id]) + off[id][0], cz(cell[id]) + off[id][1]); }
       const m = W.m.get(me); if (m) ring.position.set(m.g.position.x, .04, m.g.position.z);
